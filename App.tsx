@@ -1,5 +1,4 @@
-
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { BookOpen, ArrowLeft, LayoutDashboard, Key, ExternalLink, Settings } from 'lucide-react';
 import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig } from './types.ts';
 import { fetchChapters, generateHandoutFromText, generateHomework } from './geminiService.ts';
@@ -20,9 +19,18 @@ declare global {
   }
 }
 
+const LOADING_MESSAGES = [
+  "AI 老師正在翻閱教材...",
+  "正在根據特教原則微步化解法...",
+  "正在為單元繪製直觀的圖示...",
+  "正在設計適合學生的練習題...",
+  "快好了！正在進行最後的排版...",
+];
+
 const App: React.FC = () => {
   const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
   const [view, setView] = useState<'welcome' | 'handout' | 'homework'>('welcome');
   const [params, setParams] = useState<SelectionParams>({
     year: '113',
@@ -36,6 +44,17 @@ const App: React.FC = () => {
   const [currentChapter, setCurrentChapter] = useState<{ title: string; sub: string } | null>(null);
   const [handout, setHandout] = useState<HandoutContent | null>(null);
   const [homework, setHomework] = useState<HomeworkContent | null>(null);
+
+  // 動態切換載入文字
+  useEffect(() => {
+    let interval: number;
+    if (loading) {
+      interval = window.setInterval(() => {
+        setLoadingMsgIdx(prev => (prev + 1) % LOADING_MESSAGES.length);
+      }, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [loading]);
 
   const checkKeyStatus = useCallback(async () => {
     try {
@@ -73,13 +92,7 @@ const App: React.FC = () => {
       setChapters(data);
     } catch (error: any) {
       console.error("Search error:", error);
-      const errorMsg = error.message || String(error);
-      if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("API_KEY")) {
-        setHasKey(false);
-        alert('API Key 無效或未選取，請重新點擊「啟動」並選取正確的付費專案金鑰。');
-      } else {
-        alert(`連線失敗：${errorMsg.substring(0, 100)}`);
-      }
+      alert('課程目錄查詢失敗，請稍後再試。');
     } finally {
       setLoading(false);
     }
@@ -94,7 +107,7 @@ const App: React.FC = () => {
       setView('handout');
     } catch (error: any) {
       console.error("Generate handout error:", error);
-      alert('講義生成失敗。若問題持續發生，請嘗試更換 API 金鑰。');
+      alert('講義生成失敗，可能因為單元內容太複雜。');
     } finally {
       setLoading(false);
     }
@@ -124,7 +137,7 @@ const App: React.FC = () => {
           </div>
           <h1 className="text-3xl font-black mb-4">啟動 AI 教學助手</h1>
           <p className="text-slate-400 font-medium mb-8 leading-relaxed">
-            您已有 API Key。請點擊下方按鈕在選單中選取您的付費專案（Paid Project）金鑰。
+            請點擊下方按鈕選取您的付費專案金鑰，即可開始使用高品質教材生成服務。
           </p>
           <button 
             onClick={handleOpenKeyDialog}
@@ -152,7 +165,7 @@ const App: React.FC = () => {
       <aside className="w-80 bg-white no-print p-6 flex flex-col h-screen sticky top-0 border-r border-slate-200">
         <div className="flex items-center gap-3 text-blue-600 mb-8 shrink-0">
           <BookOpen size={24} />
-          <h1 className="text-xl font-black">特教數學助手</h1>
+          <h1 className="text-xl font-black tracking-tight">特教數學助手</h1>
         </div>
         
         <div className="flex-1 overflow-y-auto pr-1 space-y-6">
@@ -165,9 +178,9 @@ const App: React.FC = () => {
           ) : (
             <div className="flex flex-col gap-4">
               <button onClick={() => setView('welcome')} className="flex items-center gap-2 text-slate-500 font-bold py-2 hover:bg-slate-100 rounded-lg px-2 transition">
-                <ArrowLeft size={18} /> 返回設定單元
+                <ArrowLeft size={18} /> 返回單元設定
               </button>
-              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 font-bold text-sm text-blue-700">
+              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 font-bold text-sm text-blue-700 shadow-sm">
                 單元：{currentChapter?.title}
               </div>
               <nav className="flex flex-col gap-1 mt-4">
@@ -189,35 +202,43 @@ const App: React.FC = () => {
         <div className="pt-6 border-t border-slate-100 mt-auto shrink-0">
           <button 
             onClick={handleOpenKeyDialog}
-            className="w-full flex items-center justify-center gap-2 py-3 text-slate-400 hover:text-slate-600 font-bold text-sm transition-colors"
+            className="w-full flex items-center justify-center gap-2 py-3 text-slate-400 hover:text-slate-600 font-bold text-xs transition-colors"
           >
-            <Settings size={16} />
+            <Settings size={14} />
             管理 API 金鑰設定
           </button>
         </div>
       </aside>
 
-      <main className="flex-1 p-8 md:p-12 overflow-y-auto bg-slate-50">
+      <main className="flex-1 p-8 md:p-12 overflow-y-auto bg-slate-50 scroll-smooth">
         {loading && (
-          <div className="flex flex-col items-center justify-center h-64 gap-4">
-            <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-            <p className="font-bold text-slate-600">AI 老師處理中...</p>
+          <div className="flex flex-col items-center justify-center h-full gap-6 animate-pulse">
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-2 h-2 bg-blue-600 rounded-full animate-ping"></div>
+              </div>
+            </div>
+            <div className="text-center">
+              <p className="font-black text-slate-700 text-2xl mb-2">{LOADING_MESSAGES[loadingMsgIdx]}</p>
+              <p className="text-slate-400 font-bold text-sm">這可能需要幾十秒，請老師稍坐片刻...</p>
+            </div>
           </div>
         )}
         {view === 'welcome' && !loading && (
-          <div className="h-full flex flex-col items-center justify-center text-center opacity-30">
-            <LayoutDashboard size={80} className="mb-6" />
-            <h2 className="text-3xl font-black italic">請於左側面板選擇單元開始教學</h2>
+          <div className="h-full flex flex-col items-center justify-center text-center opacity-30 select-none">
+            <LayoutDashboard size={100} className="mb-8 text-slate-400" />
+            <h2 className="text-4xl font-black italic tracking-tighter">請由左側選擇單元開始生成教材</h2>
           </div>
         )}
         {view === 'handout' && handout && !loading && (
-          <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500">
+          <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <HandoutViewer content={handout} params={params} theme="default" />
             <HomeworkConfigSection onGenerate={handleGenerateHomework} isLoading={loading} />
           </div>
         )}
         {view === 'homework' && homework && !loading && (
-          <div className="max-w-4xl mx-auto animate-in fade-in duration-500">
+          <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
             <HomeworkViewer content={homework} params={params} theme="default" />
           </div>
         )}
