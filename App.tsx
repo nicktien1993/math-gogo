@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { BookOpen, ArrowLeft, LayoutDashboard, Key, ExternalLink } from 'lucide-react';
 import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig } from './types.ts';
@@ -10,7 +9,7 @@ import HandoutViewer from './HandoutViewer.tsx';
 import HomeworkViewer from './HomeworkViewer.tsx';
 import HomeworkConfigSection from './HomeworkConfigSection.tsx';
 
-// 定義 window.aistudio 的類型，確保與全域定義一致並避免重複宣告衝突
+// 定義 window.aistudio 的類型，確保與全域定義一致
 declare global {
   interface AIStudio {
     hasSelectedApiKey: () => Promise<boolean>;
@@ -18,8 +17,8 @@ declare global {
   }
 
   interface Window {
-    // Removed readonly modifier to match the ambient Window interface declaration and fix identical modifiers error
-    aistudio: AIStudio;
+    // Fix: Using optional modifier to resolve "All declarations of 'aistudio' must have identical modifiers" error
+    aistudio?: AIStudio;
   }
 }
 
@@ -44,10 +43,15 @@ const App: React.FC = () => {
   useEffect(() => {
     const checkKey = async () => {
       try {
-        const selected = await window.aistudio.hasSelectedApiKey();
-        setHasKey(selected);
+        // Fix: Added safety check for window.aistudio existence
+        if (window.aistudio) {
+          const selected = await window.aistudio.hasSelectedApiKey();
+          setHasKey(selected);
+        } else {
+          // 如果不在 AI Studio 環境中或報錯，視為環境變數已注入
+          setHasKey(true);
+        }
       } catch (e) {
-        // 如果不在 AI Studio 環境中，預設為 true (假設環境變數已注入)
         setHasKey(true);
       }
     };
@@ -55,8 +59,15 @@ const App: React.FC = () => {
   }, []);
 
   const handleOpenKeyDialog = async () => {
-    await window.aistudio.openSelectKey();
-    setHasKey(true); // 根據規範，觸發後直接假設成功
+    try {
+      // Fix: Added safety check for window.aistudio existence
+      if (window.aistudio) {
+        await window.aistudio.openSelectKey();
+      }
+      setHasKey(true); 
+    } catch (e) {
+      console.error("Failed to open key dialog", e);
+    }
   };
 
   const handleSearchChapters = useCallback(async (newParams: SelectionParams) => {
@@ -66,12 +77,17 @@ const App: React.FC = () => {
       const data = await fetchChapters(newParams);
       setChapters(data);
     } catch (error: any) {
-      console.error(error);
-      if (error.message?.includes("Requested entity was not found")) {
+      console.error("Search error:", error);
+      const errorMsg = error.message || String(error);
+      
+      if (errorMsg.includes("Requested entity was not found")) {
         setHasKey(false);
-        alert('API Key 效期已過或專案不存在，請重新選擇。');
+        alert('API Key 效期已過或專案不存在，請重新選取付費專案的 Key。');
+      } else if (errorMsg.includes("API_KEY")) {
+        setHasKey(false);
+        alert('找不到有效的 API Key，請重新點擊啟動按鈕進行選取。');
       } else {
-        alert('連線失敗，請檢查網路或 API Key 設定。');
+        alert(`連線失敗：${errorMsg.substring(0, 100)}\n請確認網路狀況或是否已選取正確的 API Key。`);
       }
     } finally {
       setLoading(false);
@@ -85,9 +101,9 @@ const App: React.FC = () => {
       const data = await generateHandoutFromText(params, chapter, sub);
       setHandout(data);
       setView('handout');
-    } catch (error) {
-      console.error(error);
-      alert('講義生成失敗。');
+    } catch (error: any) {
+      console.error("Generate handout error:", error);
+      alert('講義生成失敗：' + (error.message || '未知錯誤'));
     } finally {
       setLoading(false);
     }
@@ -100,9 +116,9 @@ const App: React.FC = () => {
       const data = await generateHomework(params, currentChapter.title, currentChapter.sub, config);
       setHomework(data);
       setView('homework');
-    } catch (error) {
-      console.error(error);
-      alert('練習卷生成失敗。');
+    } catch (error: any) {
+      console.error("Generate homework error:", error);
+      alert('練習卷生成失敗：' + (error.message || '未知錯誤'));
     } finally {
       setLoading(false);
     }
@@ -119,6 +135,7 @@ const App: React.FC = () => {
           <h1 className="text-3xl font-black mb-4">啟動 AI 教學助手</h1>
           <p className="text-slate-400 font-medium mb-8 leading-relaxed">
             為了提供高品質的 AI 教材生成服務，請先選取您的 API Key 專案。
+            請確保該專案已啟用計費（Paid project）。
           </p>
           <button 
             onClick={handleOpenKeyDialog}
@@ -129,6 +146,7 @@ const App: React.FC = () => {
           <a 
             href="https://ai.google.dev/gemini-api/docs/billing" 
             target="_blank" 
+            rel="noopener noreferrer"
             className="inline-flex items-center gap-2 text-slate-500 hover:text-blue-400 font-bold transition-colors text-sm"
           >
             查看計費與 API 說明 <ExternalLink size={14} />
@@ -138,14 +156,13 @@ const App: React.FC = () => {
     );
   }
 
-  // 載入狀態
   if (hasKey === null) return null;
 
   return (
     <div className="min-h-screen flex bg-slate-50">
       <aside className="w-80 bg-white no-print p-6 flex flex-col gap-6 h-screen sticky top-0 overflow-y-auto border-r border-slate-200">
         <div className="flex items-center gap-3 text-blue-600 mb-4">
-          < BookOpen size={24} />
+          <BookOpen size={24} />
           <h1 className="text-xl font-black">特教數學助手</h1>
         </div>
         {view === 'welcome' ? (

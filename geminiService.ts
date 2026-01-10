@@ -7,6 +7,7 @@ const SYSTEM_INSTRUCTION = `你是一位專業的國小資源班特教老師。
 2. 練習卷包含：僅題目(questions)與檢查表(checklist)，不准有答案。
 3. 禁止使用 $ 符號，數學算式直接寫純文字。
 4. 針對例題，請提供 stepByStep 微步化解法。
+5. 內容必須符合台灣國小數學課程標準，並使用台灣術語（如：公分、公尺、公克）。
 回傳格式：純 JSON 物件，不包含任何 Markdown 標記。`;
 
 const cleanAndParse = (text: string | undefined) => {
@@ -21,10 +22,10 @@ const cleanAndParse = (text: string | undefined) => {
 };
 
 export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]> => {
-  // Always initialize GoogleGenAI with process.env.API_KEY directly inside the function before each call
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+  // Fix: Create instance right before API call to ensure current API key is used
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-3-pro-preview', // 升級為 Pro 以獲取更精確的目錄
     contents: `請列出 ${params.publisher}版 國小數學 ${params.grade}${params.semester}學期 的單元目錄。JSON 格式包含 id, title, subChapters 陣列。`,
     config: { responseMimeType: "application/json" }
   });
@@ -33,11 +34,11 @@ export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]>
 };
 
 export const generateHandoutFromText = async (params: SelectionParams, chapter: string, sub: string): Promise<HandoutContent> => {
-  // Always initialize GoogleGenAI with process.env.API_KEY directly inside the function before each call
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+  // Fix: Create instance right before API call
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
-    contents: `生成「${chapter}-${sub}」的教學講義。`,
+    contents: `針對「${params.publisher}版 ${params.grade}${params.semester}：${chapter}-${sub}」生成特教教學講義。`,
     config: { 
       systemInstruction: SYSTEM_INSTRUCTION,
       responseMimeType: "application/json" 
@@ -55,11 +56,11 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
 };
 
 export const generateHomework = async (params: SelectionParams, chapter: string, sub: string, config: HomeworkConfig): Promise<HomeworkContent> => {
-  // Always initialize GoogleGenAI with process.env.API_KEY directly inside the function before each call
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+  // Fix: Create instance right before API call
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
-    contents: `生成「${chapter}-${sub}」的練習卷，包含 ${config.calculationCount} 題計算與 ${config.wordProblemCount} 題應用。`,
+    contents: `針對單元「${chapter}-${sub}」生成一份練習卷，難度為：${config.difficulty}。包含 ${config.calculationCount} 題計算與 ${config.wordProblemCount} 題應用。`,
     config: { 
       systemInstruction: SYSTEM_INSTRUCTION,
       responseMimeType: "application/json" 
