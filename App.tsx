@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { BookOpen, ArrowLeft, LayoutDashboard, Key, ExternalLink } from 'lucide-react';
 import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig } from './types.ts';
@@ -17,8 +18,8 @@ declare global {
   }
 
   interface Window {
-    // Add readonly modifier to match the ambient Window interface declaration and fix identical modifiers error
-    readonly aistudio: AIStudio;
+    // Removed readonly modifier to match the ambient Window interface declaration and fix identical modifiers error
+    aistudio: AIStudio;
   }
 }
 
@@ -142,9 +143,9 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex bg-slate-50">
-      <aside className="w-80 bg-white border-r no-print p-6 flex flex-col gap-6 h-screen sticky top-0 overflow-y-auto">
+      <aside className="w-80 bg-white no-print p-6 flex flex-col gap-6 h-screen sticky top-0 overflow-y-auto border-r border-slate-200">
         <div className="flex items-center gap-3 text-blue-600 mb-4">
-          <BookOpen size={24} />
+          < BookOpen size={24} />
           <h1 className="text-xl font-black">特教數學助手</h1>
         </div>
         {view === 'welcome' ? (
