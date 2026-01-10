@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { SelectionParams, Chapter, HandoutContent, HomeworkConfig, HomeworkContent } from '../types';
 
@@ -13,7 +12,8 @@ const SYSTEM_INSTRUCTION = `你是一位專業的國小資源班特教老師。
 const cleanJson = (text: string) => text.replace(/```json/g, '').replace(/```/g, '').trim();
 
 export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  // Fix: Initialize GoogleGenAI with process.env.API_KEY directly before making the API call
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: `請列出 ${params.publisher}版 國小數學 ${params.grade}${params.semester} 的單元目錄。`,
@@ -23,7 +23,8 @@ export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]>
 };
 
 export const generateHandoutFromText = async (params: SelectionParams, chapter: string, sub: string): Promise<HandoutContent> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  // Fix: Initialize GoogleGenAI with process.env.API_KEY directly before making the API call
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: `針對單元「${chapter}-${sub}」為資源班學生生成講義。`,
@@ -36,7 +37,8 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
 };
 
 export const generateHomework = async (params: SelectionParams, chapter: string, sub: string, config: HomeworkConfig): Promise<HomeworkContent> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  // Fix: Initialize GoogleGenAI with process.env.API_KEY directly before making the API call
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: `針對單元「${chapter}-${sub}」生成一份練習卷，包含 5 題題目。`,

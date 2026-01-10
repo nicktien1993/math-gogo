@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { SelectionParams, Chapter, HandoutContent, HomeworkConfig, HomeworkContent } from './types.ts';
 
@@ -22,8 +21,8 @@ const cleanAndParse = (text: string) => {
 };
 
 export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]> => {
-  // 每次調用都重新獲取最新的 process.env.API_KEY
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  // Fix: Initialize GoogleGenAI with process.env.API_KEY directly before making the API call
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: `請列出 ${params.publisher}版 國小數學 ${params.grade}${params.semester}學期 的單元目錄。JSON 格式包含 id, title, subChapters 陣列。`,
@@ -34,7 +33,8 @@ export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]>
 };
 
 export const generateHandoutFromText = async (params: SelectionParams, chapter: string, sub: string): Promise<HandoutContent> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  // Fix: Initialize GoogleGenAI with process.env.API_KEY directly before making the API call
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: `生成「${chapter}-${sub}」的教學講義。`,
@@ -55,7 +55,8 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
 };
 
 export const generateHomework = async (params: SelectionParams, chapter: string, sub: string, config: HomeworkConfig): Promise<HomeworkContent> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+  // Fix: Initialize GoogleGenAI with process.env.API_KEY directly before making the API call
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: `生成「${chapter}-${sub}」的練習卷，包含 ${config.calculationCount} 題計算與 ${config.wordProblemCount} 題應用。`,

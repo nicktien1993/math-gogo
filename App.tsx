@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { BookOpen, ArrowLeft, LayoutDashboard, Key, ExternalLink } from 'lucide-react';
 import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig } from './types.ts';
@@ -18,7 +17,8 @@ declare global {
   }
 
   interface Window {
-    readonly aistudio: AIStudio;
+    // Fix: Removed readonly to ensure identical modifiers for declaration merging on the Window interface
+    aistudio: AIStudio;
   }
 }
 
