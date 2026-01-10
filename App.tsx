@@ -1,5 +1,6 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
-import { BookOpen, ArrowLeft, LayoutDashboard, Key, ExternalLink } from 'lucide-react';
+import { BookOpen, ArrowLeft, LayoutDashboard, Key, ExternalLink, Settings } from 'lucide-react';
 import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig } from './types.ts';
 import { fetchChapters, generateHandoutFromText, generateHomework } from './geminiService.ts';
 import SelectionForm from './SelectionForm.tsx';
@@ -9,15 +10,12 @@ import HandoutViewer from './HandoutViewer.tsx';
 import HomeworkViewer from './HomeworkViewer.tsx';
 import HomeworkConfigSection from './HomeworkConfigSection.tsx';
 
-// 定義 window.aistudio 的類型，確保與全域定義一致
 declare global {
   interface AIStudio {
     hasSelectedApiKey: () => Promise<boolean>;
     openSelectKey: () => Promise<void>;
   }
-
   interface Window {
-    // Fix: Using optional modifier to resolve "All declarations of 'aistudio' must have identical modifiers" error
     aistudio?: AIStudio;
   }
 }
@@ -39,28 +37,25 @@ const App: React.FC = () => {
   const [handout, setHandout] = useState<HandoutContent | null>(null);
   const [homework, setHomework] = useState<HomeworkContent | null>(null);
 
-  // 檢查是否已選擇 API Key
-  useEffect(() => {
-    const checkKey = async () => {
-      try {
-        // Fix: Added safety check for window.aistudio existence
-        if (window.aistudio) {
-          const selected = await window.aistudio.hasSelectedApiKey();
-          setHasKey(selected);
-        } else {
-          // 如果不在 AI Studio 環境中或報錯，視為環境變數已注入
-          setHasKey(true);
-        }
-      } catch (e) {
+  const checkKeyStatus = useCallback(async () => {
+    try {
+      if (window.aistudio) {
+        const selected = await window.aistudio.hasSelectedApiKey();
+        setHasKey(selected);
+      } else {
         setHasKey(true);
       }
-    };
-    checkKey();
+    } catch (e) {
+      setHasKey(true);
+    }
   }, []);
+
+  useEffect(() => {
+    checkKeyStatus();
+  }, [checkKeyStatus]);
 
   const handleOpenKeyDialog = async () => {
     try {
-      // Fix: Added safety check for window.aistudio existence
       if (window.aistudio) {
         await window.aistudio.openSelectKey();
       }
@@ -79,15 +74,11 @@ const App: React.FC = () => {
     } catch (error: any) {
       console.error("Search error:", error);
       const errorMsg = error.message || String(error);
-      
-      if (errorMsg.includes("Requested entity was not found")) {
+      if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("API_KEY")) {
         setHasKey(false);
-        alert('API Key 效期已過或專案不存在，請重新選取付費專案的 Key。');
-      } else if (errorMsg.includes("API_KEY")) {
-        setHasKey(false);
-        alert('找不到有效的 API Key，請重新點擊啟動按鈕進行選取。');
+        alert('API Key 無效或未選取，請重新點擊「啟動」並選取正確的付費專案金鑰。');
       } else {
-        alert(`連線失敗：${errorMsg.substring(0, 100)}\n請確認網路狀況或是否已選取正確的 API Key。`);
+        alert(`連線失敗：${errorMsg.substring(0, 100)}`);
       }
     } finally {
       setLoading(false);
@@ -103,7 +94,7 @@ const App: React.FC = () => {
       setView('handout');
     } catch (error: any) {
       console.error("Generate handout error:", error);
-      alert('講義生成失敗：' + (error.message || '未知錯誤'));
+      alert('講義生成失敗。若問題持續發生，請嘗試更換 API 金鑰。');
     } finally {
       setLoading(false);
     }
@@ -118,13 +109,12 @@ const App: React.FC = () => {
       setView('homework');
     } catch (error: any) {
       console.error("Generate homework error:", error);
-      alert('練習卷生成失敗：' + (error.message || '未知錯誤'));
+      alert('練習卷生成失敗。');
     } finally {
       setLoading(false);
     }
   }, [params, currentChapter]);
 
-  // 如果還沒選擇 Key，顯示啟動畫面
   if (hasKey === false) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-white">
@@ -134,8 +124,7 @@ const App: React.FC = () => {
           </div>
           <h1 className="text-3xl font-black mb-4">啟動 AI 教學助手</h1>
           <p className="text-slate-400 font-medium mb-8 leading-relaxed">
-            為了提供高品質的 AI 教材生成服務，請先選取您的 API Key 專案。
-            請確保該專案已啟用計費（Paid project）。
+            您已有 API Key。請點擊下方按鈕在選單中選取您的付費專案（Paid Project）金鑰。
           </p>
           <button 
             onClick={handleOpenKeyDialog}
@@ -160,40 +149,54 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex bg-slate-50">
-      <aside className="w-80 bg-white no-print p-6 flex flex-col gap-6 h-screen sticky top-0 overflow-y-auto border-r border-slate-200">
-        <div className="flex items-center gap-3 text-blue-600 mb-4">
+      <aside className="w-80 bg-white no-print p-6 flex flex-col h-screen sticky top-0 border-r border-slate-200">
+        <div className="flex items-center gap-3 text-blue-600 mb-8 shrink-0">
           <BookOpen size={24} />
           <h1 className="text-xl font-black">特教數學助手</h1>
         </div>
-        {view === 'welcome' ? (
-          <>
-            <SelectionForm initialParams={params} onSubmit={handleSearchChapters} isLoading={loading} />
-            {chapters.length > 0 && <ChapterSelector chapters={chapters} onSelect={handleSelectUnit} isLoading={loading} />}
-            <ManualUnitInput onGenerate={handleSelectUnit} isLoading={loading} />
-          </>
-        ) : (
-          <div className="flex flex-col gap-4">
-            <button onClick={() => setView('welcome')} className="flex items-center gap-2 text-slate-500 font-bold py-2 hover:bg-slate-100 rounded-lg px-2 transition">
-              <ArrowLeft size={18} /> 返回設定單元
-            </button>
-            <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 font-bold text-sm text-blue-700">
-              當前單元：{currentChapter?.title} - {currentChapter?.sub}
+        
+        <div className="flex-1 overflow-y-auto pr-1 space-y-6">
+          {view === 'welcome' ? (
+            <>
+              <SelectionForm initialParams={params} onSubmit={handleSearchChapters} isLoading={loading} />
+              {chapters.length > 0 && <ChapterSelector chapters={chapters} onSelect={handleSelectUnit} isLoading={loading} />}
+              <ManualUnitInput onGenerate={handleSelectUnit} isLoading={loading} />
+            </>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <button onClick={() => setView('welcome')} className="flex items-center gap-2 text-slate-500 font-bold py-2 hover:bg-slate-100 rounded-lg px-2 transition">
+                <ArrowLeft size={18} /> 返回設定單元
+              </button>
+              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 font-bold text-sm text-blue-700">
+                單元：{currentChapter?.title}
+              </div>
+              <nav className="flex flex-col gap-1 mt-4">
+                <button onClick={() => setView('handout')} className={`px-4 py-3 rounded-xl font-bold transition text-left ${view === 'handout' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}>
+                  1. 教學講義
+                </button>
+                <button 
+                  onClick={() => homework && setView('homework')} 
+                  disabled={!homework}
+                  className={`px-4 py-3 rounded-xl font-bold transition text-left ${view === 'homework' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'} ${!homework ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  2. 練習卷
+                </button>
+              </nav>
             </div>
-            <nav className="flex flex-col gap-1 mt-4">
-              <button onClick={() => setView('handout')} className={`px-4 py-3 rounded-xl font-bold transition text-left ${view === 'handout' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}>
-                1. 教學講義
-              </button>
-              <button 
-                onClick={() => homework && setView('homework')} 
-                disabled={!homework}
-                className={`px-4 py-3 rounded-xl font-bold transition text-left ${view === 'homework' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'} ${!homework ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                2. 練習卷
-              </button>
-            </nav>
-          </div>
-        )}
+          )}
+        </div>
+
+        <div className="pt-6 border-t border-slate-100 mt-auto shrink-0">
+          <button 
+            onClick={handleOpenKeyDialog}
+            className="w-full flex items-center justify-center gap-2 py-3 text-slate-400 hover:text-slate-600 font-bold text-sm transition-colors"
+          >
+            <Settings size={16} />
+            管理 API 金鑰設定
+          </button>
+        </div>
       </aside>
+
       <main className="flex-1 p-8 md:p-12 overflow-y-auto bg-slate-50">
         {loading && (
           <div className="flex flex-col items-center justify-center h-64 gap-4">
@@ -207,13 +210,13 @@ const App: React.FC = () => {
             <h2 className="text-3xl font-black italic">請於左側面板選擇單元開始教學</h2>
           </div>
         )}
-        {view === 'handout' && handout && (
+        {view === 'handout' && handout && !loading && (
           <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500">
             <HandoutViewer content={handout} params={params} theme="default" />
             <HomeworkConfigSection onGenerate={handleGenerateHomework} isLoading={loading} />
           </div>
         )}
-        {view === 'homework' && homework && (
+        {view === 'homework' && homework && !loading && (
           <div className="max-w-4xl mx-auto animate-in fade-in duration-500">
             <HomeworkViewer content={homework} params={params} theme="default" />
           </div>

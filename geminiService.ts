@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { SelectionParams, Chapter, HandoutContent, HomeworkConfig, HomeworkContent } from './types.ts';
 
@@ -22,10 +23,9 @@ const cleanAndParse = (text: string | undefined) => {
 };
 
 export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]> => {
-  // Fix: Create instance right before API call to ensure current API key is used
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview', // 升級為 Pro 以獲取更精確的目錄
+    model: 'gemini-3-pro-preview',
     contents: `請列出 ${params.publisher}版 國小數學 ${params.grade}${params.semester}學期 的單元目錄。JSON 格式包含 id, title, subChapters 陣列。`,
     config: { responseMimeType: "application/json" }
   });
@@ -34,7 +34,6 @@ export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]>
 };
 
 export const generateHandoutFromText = async (params: SelectionParams, chapter: string, sub: string): Promise<HandoutContent> => {
-  // Fix: Create instance right before API call
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
@@ -56,7 +55,6 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
 };
 
 export const generateHomework = async (params: SelectionParams, chapter: string, sub: string, config: HomeworkConfig): Promise<HomeworkContent> => {
-  // Fix: Create instance right before API call
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
