@@ -17,8 +17,8 @@ declare global {
   }
 
   interface Window {
-    // Fix: Removed readonly to ensure identical modifiers for declaration merging on the Window interface
-    aistudio: AIStudio;
+    // Add readonly modifier to match the ambient Window interface declaration and fix identical modifiers error
+    readonly aistudio: AIStudio;
   }
 }
 

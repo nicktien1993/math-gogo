@@ -21,7 +21,7 @@ const cleanAndParse = (text: string) => {
 };
 
 export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]> => {
-  // Fix: Initialize GoogleGenAI with process.env.API_KEY directly before making the API call
+  // Always initialize GoogleGenAI with process.env.API_KEY directly inside the function before each call
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
@@ -33,7 +33,7 @@ export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]>
 };
 
 export const generateHandoutFromText = async (params: SelectionParams, chapter: string, sub: string): Promise<HandoutContent> => {
-  // Fix: Initialize GoogleGenAI with process.env.API_KEY directly before making the API call
+  // Always initialize GoogleGenAI with process.env.API_KEY directly inside the function before each call
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
@@ -55,7 +55,7 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
 };
 
 export const generateHomework = async (params: SelectionParams, chapter: string, sub: string, config: HomeworkConfig): Promise<HomeworkContent> => {
-  // Fix: Initialize GoogleGenAI with process.env.API_KEY directly before making the API call
+  // Always initialize GoogleGenAI with process.env.API_KEY directly inside the function before each call
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
