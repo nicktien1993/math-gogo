@@ -4,125 +4,97 @@ import { SelectionParams, Chapter, HandoutContent, HomeworkConfig, HomeworkConte
 import { getLocalChapters } from './curriculumData.ts';
 import { getLocalHandout, PRESET_HANDOUTS } from './handoutData.ts';
 
-const SYSTEM_INSTRUCTION = `你是一位專業的國小資源班特教老師。
-請注意：
-1. 輸出格式必須是純 JSON，不得包含任何 Markdown 標記。
-2. 禁止使用 $ 符號，數學算式直接寫純文字（如：1/2, 2x3=6）。
-3. 講義內容要微步化(stepByStep)，確保特教學生易懂。
-4. SVG 圖示請保持簡潔，並確保包含 viewBox 屬性以利縮放。
-5. 使用台灣數學術語。
-6. 講義內容必須包含 title, concept, examples (至少3題), tips, checklist。`;
+const SYSTEM_INSTRUCTION = `你是一位專業的台灣國小資源班特教老師，擅長「視覺化策略教學」。
 
-const CACHE_PREFIX = 'MATH_HANDOUT_CACHE_';
+核心規範：
+1. 格式：純 JSON，不准有 Markdown 標記。
+2. 數學：禁止 $ 符號。分數寫成 "2又1/2" 或 "3/4"。
+3. 幾何 SVG 要求：必須使用 <svg viewBox="0 0 400 250">，標註底、高（虛線）、直角記號及長度數字。
+4. 步驟排版規範 (極重要)：
+   每個步驟請使用以下格式： "步驟 X：標題內容。- 詳細說明內容"
+   一定要有句號「。」作為標題與說明的拆分點。
+   範例："步驟 1：先找出「底」和「高」。- 橫量在下面那條線是底，垂直往上的是高。"
+5. 術語：使用台灣教育部數學術語（如：平方公分、上底、下底）。
+
+JSON 結構請嚴格遵守：
+講義：{ "title": string, "concept": string, "visualAidSvg": string, "examples": [{ "question": string, "stepByStep": [string], "answer": string, "visualAidSvg": string }], "tips": string, "checklist": [string] }
+練習卷：{ "title": string, "questions": [{ "type": "計算題"|"應用題", "content": string, "hint": string, "answer": string, "visualAidSvg": string }], "checklist": [string] }`;
+
+const CACHE_PREFIX = 'MATH_HANDOUT_CACHE_V3_';
+const HW_CACHE_PREFIX = 'MATH_HW_CACHE_V3_';
 
 const cleanAndParse = (text: any) => {
   if (!text) return null;
-  const contentStr = typeof text === 'string' ? text : String(text);
-  
+  let clean = typeof text === 'string' ? text : String(text);
   try {
-    let clean = contentStr.replace(/```json/g, '').replace(/```/g, '').trim();
-    const startIdx = Math.min(
-      clean.indexOf('{') === -1 ? Infinity : clean.indexOf('{'),
-      clean.indexOf('[') === -1 ? Infinity : clean.indexOf('[')
-    );
-    const endIdx = Math.max(clean.lastIndexOf('}'), clean.lastIndexOf(']'));
-
-    if (startIdx !== Infinity && endIdx !== -1) {
+    clean = clean.replace(/```json/gi, '').replace(/```/gi, '').trim();
+    const startIdx = clean.indexOf('{');
+    const endIdx = clean.lastIndexOf('}');
+    if (startIdx !== -1 && endIdx !== -1) {
       clean = clean.substring(startIdx, endIdx + 1);
     }
     return JSON.parse(clean);
   } catch (e) {
-    console.error("JSON 解析失敗:", e);
     return null;
   }
 };
 
-/**
- * 獲取目錄：完全本地化
- */
 export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]> => {
   return new Promise((resolve) => {
     setTimeout(() => {
-      const data = getLocalChapters(params.publisher, params.grade, params.semester);
-      resolve(data);
+      resolve(getLocalChapters(params.publisher, params.grade, params.semester));
     }, 50);
   });
 };
 
-/**
- * 獲取講義：智慧快取機制
- */
 export const generateHandoutFromText = async (params: SelectionParams, chapter: string, sub: string): Promise<HandoutContent> => {
   const cacheKey = `${CACHE_PREFIX}${params.publisher}_${params.grade}_${params.semester}_${chapter}_${sub}`;
-
-  // 1. 優先檢查：代碼內建的「精選預設講義」
   const handoutKey = `${params.publisher}-${params.grade}-${params.semester}-${chapter}-${sub}`;
-  if (PRESET_HANDOUTS[handoutKey]) {
-    console.log("從內建資料庫讀取講義");
-    return PRESET_HANDOUTS[handoutKey];
-  }
+  
+  // 優先檢查內建
+  if (PRESET_HANDOUTS[handoutKey]) return PRESET_HANDOUTS[handoutKey];
+  
+  // 檢查快取
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) return JSON.parse(cached);
 
-  // 2. 次要檢查：瀏覽器快取 (localStorage)
-  const cachedData = localStorage.getItem(cacheKey);
-  if (cachedData) {
-    try {
-      console.log("從瀏覽器快取讀取講義 (秒開)");
-      return JSON.parse(cachedData);
-    } catch (e) {
-      localStorage.removeItem(cacheKey);
-    }
-  }
-
-  // 3. 若無快取且有 API Key，則調用 AI 生成
   if (process.env.API_KEY) {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const prompt = `針對單元「${chapter}-${sub}」生成資源班教學講義。請確保步驟格式為「步驟 X：標題。- 說明」。`;
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-preview',
-        contents: `針對「${params.publisher}版 ${params.grade}${params.semester}：${chapter}-${sub}」為資源班學生生成專業講義。確保至少有三題解釋。`,
-        config: { 
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: "application/json" 
-        }
+        contents: prompt,
+        config: { systemInstruction: SYSTEM_INSTRUCTION, responseMimeType: "application/json" }
       });
-      
       const data = cleanAndParse(response.text);
       if (data && data.title) {
-        // 生成成功後，存入快取
         localStorage.setItem(cacheKey, JSON.stringify(data));
-        console.log("AI 生成講義成功，已存入快取以供下次使用");
         return data;
       }
-    } catch (e) {
-      console.warn("AI 生成失敗，回傳模板", e);
-    }
+    } catch (e) { console.error(e); }
   }
-
-  // 4. 最後手段：回傳本地空白模板
   return getLocalHandout(params, chapter, sub);
 };
 
-/**
- * 生成練習卷
- */
 export const generateHomework = async (params: SelectionParams, chapter: string, sub: string, config: HomeworkConfig): Promise<HomeworkContent> => {
-  if (!process.env.API_KEY) {
-    return {
-      title: `${chapter} 練習卷`,
-      questions: [{ type: '計算題', content: '請老師在此處補充題目。' }],
-      checklist: []
-    };
-  }
-
+  const cacheKey = `${HW_CACHE_PREFIX}${params.publisher}_${params.grade}_${params.semester}_${chapter}_${sub}_${config.difficulty}_${config.calculationCount}_${config.wordProblemCount}`;
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) return JSON.parse(cached);
+  
+  if (!process.env.API_KEY) throw new Error("API Key Missing");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents: `針對「${chapter}-${sub}」生成一份練習卷。難度：${config.difficulty}，計算題 ${config.calculationCount} 題，應用題 ${config.wordProblemCount} 題。`,
-    config: { 
-      systemInstruction: SYSTEM_INSTRUCTION,
-      responseMimeType: "application/json" 
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: `生成「${chapter}-${sub}」練習卷。難度：${config.difficulty}。`,
+      config: { systemInstruction: SYSTEM_INSTRUCTION, responseMimeType: "application/json" }
+    });
+    const data = cleanAndParse(response.text);
+    if (data && data.questions && data.questions.length > 0) {
+      localStorage.setItem(cacheKey, JSON.stringify(data));
+      return data;
     }
-  });
-  const data = cleanAndParse(response.text);
-  return data || { title: '生成失敗', questions: [], checklist: [] };
+  } catch (e) { console.error(e); }
+  throw new Error("生成失敗");
 };

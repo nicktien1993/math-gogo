@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { HomeworkContent, SelectionParams, ThemeMode } from './types.ts';
 import { renderMathContent } from './HandoutViewer.tsx';
@@ -14,6 +15,7 @@ const HomeworkViewer: React.FC<Props> = ({ content, params, theme }) => {
       正在準備練習卷...
     </div>
   );
+  
   const questions = Array.isArray(content.questions) ? content.questions : [];
 
   return (
@@ -46,14 +48,19 @@ const HomeworkViewer: React.FC<Props> = ({ content, params, theme }) => {
                 {i + 1}
               </span>
               <div className="flex-1 pt-2">
+                {/* 顯示題目自帶的圖示 */}
+                {q.visualAidSvg && (
+                  <div className="mb-10 p-6 bg-slate-50/50 rounded-[2rem] border border-slate-100">
+                    {renderMathContent(q.visualAidSvg)}
+                  </div>
+                )}
+                
                 <div className="text-4xl font-bold text-slate-800 mb-16 leading-[1.8] tracking-tight">
                   {renderMathContent(q.content)}
                 </div>
                 
                 <div className="w-full h-[35rem] border-[4px] border-dashed border-slate-100 rounded-[3.5rem] flex items-center justify-center relative bg-slate-50/20 overflow-hidden">
                   <span className="text-slate-200 font-black text-4xl opacity-40 no-print select-none tracking-widest">請在此處作答</span>
-                  
-                  {/* 列印時顯示細膩的網格輔助線 */}
                   <div className="hidden print:block absolute inset-0 opacity-[0.03] pointer-events-none" 
                     style={{
                       backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)',
