@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { BookOpen, ArrowLeft, Layers, FileText, AlertCircle, RefreshCw, ChevronLeft, Menu, Wand2, Search, Key, ExternalLink } from 'lucide-react';
-import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig, AIStudio } from './types.ts';
+import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig, AIStudioProvider } from './types.ts';
 import { fetchChapters, generateHandoutFromText, generateHomework } from './geminiService.ts';
 import SelectionForm from './SelectionForm.tsx';
 import ChapterSelector from './ChapterSelector.tsx';
@@ -9,13 +10,10 @@ import HandoutViewer from './HandoutViewer.tsx';
 import HomeworkViewer from './HomeworkViewer.tsx';
 import HomeworkConfigSection from './HomeworkConfigSection.tsx';
 
+// Fix: Use 'any' to avoid type and modifier conflicts with pre-defined global 'aistudio' in the execution environment.
 declare global {
   interface Window {
-    /**
-     * Fix: Added readonly modifier to match the existing global declaration in the environment.
-     * This resolves both the "identical modifiers" error and the "same type" mismatch error.
-     */
-    readonly aistudio: AIStudio;
+    aistudio: any;
   }
 }
 
@@ -44,11 +42,12 @@ const App: React.FC = () => {
   useEffect(() => {
     const checkKey = async () => {
       try {
-        if (window.aistudio) {
+        if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
           const selected = await window.aistudio.hasSelectedApiKey();
           setHasKey(selected);
         } else {
-          setHasKey(true); // 如果不在特定環境，假設 key 已存在
+          // If aistudio is not present, assume an environment with direct API_KEY access
+          setHasKey(true);
         }
       } catch (e) {
         setHasKey(false);
@@ -59,8 +58,10 @@ const App: React.FC = () => {
 
   const handleSelectKey = async () => {
     try {
-      await window.aistudio.openSelectKey();
-      // Assume the key selection was successful to proceed to the app
+      if (window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
+        await window.aistudio.openSelectKey();
+      }
+      // Rule: Assume success after calling openSelectKey to proceed immediately.
       setHasKey(true);
     } catch (e) {
       console.error("Key selection failed", e);
@@ -74,7 +75,12 @@ const App: React.FC = () => {
       const data = await fetchChapters(params);
       setChapters(data);
     } catch (e: any) {
-      setError(`[目錄獲取失敗] ${e.message}`);
+      const msg = e.message || String(e);
+      // Rule: Prompt user to select a key again if request fails with 'Requested entity was not found.'
+      if (msg.includes("Requested entity was not found")) {
+        setHasKey(false);
+      }
+      setError(`[目錄獲取失敗] ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -91,7 +97,11 @@ const App: React.FC = () => {
       setHandout(data);
       setView('handout');
     } catch (err: any) {
-      setError(`[講義生成失敗] ${err.message}`);
+      const msg = err.message || String(err);
+      if (msg.includes("Requested entity was not found")) {
+        setHasKey(false);
+      }
+      setError(`[講義生成失敗] ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -106,7 +116,11 @@ const App: React.FC = () => {
       setHomework(data);
       setView('homework');
     } catch (err: any) {
-      setError(`[練習卷製作失敗] ${err.message}`);
+      const msg = err.message || String(err);
+      if (msg.includes("Requested entity was not found")) {
+        setHasKey(false);
+      }
+      setError(`[練習卷製作失敗] ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -129,6 +143,16 @@ const App: React.FC = () => {
           >
             <ExternalLink size={24} /> 點此進行授權
           </button>
+          <div className="mt-6">
+            <a 
+              href="https://ai.google.dev/gemini-api/docs/billing" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-slate-500 text-sm hover:text-blue-400 transition-colors underline"
+            >
+              瞭解 Google Cloud 計費設定與 API 連結
+            </a>
+          </div>
         </div>
       </div>
     );

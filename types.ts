@@ -59,7 +59,7 @@ export interface HomeworkContent {
   checklist: string[]; 
 }
 
-export interface AIStudio {
+export interface AIStudioProvider {
   hasSelectedApiKey: () => Promise<boolean>;
   openSelectKey: () => Promise<void>;
 }

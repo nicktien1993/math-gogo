@@ -3,6 +3,9 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { SelectionParams, Chapter, HandoutContent, HomeworkConfig, HomeworkContent } from './types.ts';
 import { getLocalChapters } from './curriculumData.ts';
 
+/**
+ * Utility to extract JSON from model responses which might contain markdown artifacts.
+ */
 const robustExtractJSON = (text: string) => {
   if (!text) return null;
   const firstBrace = text.indexOf('{');
@@ -38,6 +41,19 @@ const SYSTEM_PROMPT = `你是一位專業的台灣國小資源班特教老師。
 4. 必須回傳有效的 JSON 格式。
 5. 使用繁體中文。`;
 
+const CHAPTERS_SCHEMA = {
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      title: { type: Type.STRING, description: '單元章節名稱' },
+      subChapters: { type: Type.ARRAY, items: { type: Type.STRING }, description: '子單元列表' }
+    },
+    required: ["title", "subChapters"],
+    propertyOrdering: ["title", "subChapters"]
+  }
+};
+
 const HANDOUT_SCHEMA = {
   type: Type.OBJECT,
   properties: {
@@ -60,19 +76,48 @@ const HANDOUT_SCHEMA = {
     tips: { type: Type.STRING },
     checklist: { type: Type.ARRAY, items: { type: Type.STRING } }
   },
-  required: ["title", "concept", "examples", "tips", "checklist"]
+  required: ["title", "concept", "examples", "tips", "checklist"],
+  propertyOrdering: ["title", "concept", "visualAidSvg", "examples", "tips", "checklist"]
+};
+
+const HOMEWORK_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING },
+    questions: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          type: { type: Type.STRING },
+          content: { type: Type.STRING },
+          hint: { type: Type.STRING },
+          answer: { type: Type.STRING },
+          visualAidSvg: { type: Type.STRING }
+        },
+        required: ["type", "content", "answer"]
+      }
+    },
+    checklist: { type: Type.ARRAY, items: { type: Type.STRING } }
+  },
+  required: ["title", "questions", "checklist"],
+  propertyOrdering: ["title", "questions", "checklist"]
 };
 
 export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]> => {
-  const apiKey = process.env.API_KEY || '';
-  const ai = new GoogleGenAI({ apiKey });
+  // Always create a new instance right before use to ensure updated API_KEY usage.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `列出台灣「${params.publisher}」${params.grade}${params.semester}數學課程目錄。格式：[{"title": "單元名稱", "subChapters": ["子單元1", "子單元2"]}]`,
-      config: { responseMimeType: "application/json" }
+      contents: `列出台灣「${params.publisher}」${params.grade}${params.semester}數學課程目錄。格式為 JSON。`,
+      config: { 
+        responseMimeType: "application/json",
+        responseSchema: CHAPTERS_SCHEMA
+      }
     });
-    const data = robustExtractJSON(response.text);
+    const text = response.text || "";
+    const data = robustExtractJSON(text);
     return Array.isArray(data) ? data : getLocalChapters(params.publisher, params.grade, params.semester);
   } catch (e) {
     return getLocalChapters(params.publisher, params.grade, params.semester);
@@ -80,8 +125,7 @@ export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]>
 };
 
 export const generateHandoutFromText = async (params: SelectionParams, chapter: string, sub: string): Promise<HandoutContent> => {
-  const apiKey = process.env.API_KEY || '';
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
@@ -92,7 +136,8 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
         responseSchema: HANDOUT_SCHEMA
       }
     });
-    const data = robustExtractJSON(response.text);
+    const text = response.text || "";
+    const data = robustExtractJSON(text);
     if (!data) throw new Error("AI 回傳的內容格式不正確");
     return data;
   } catch (e: any) {
@@ -101,18 +146,19 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
 };
 
 export const generateHomework = async (params: SelectionParams, chapter: string, sub: string, config: HomeworkConfig): Promise<HomeworkContent> => {
-  const apiKey = process.env.API_KEY || '';
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: `製作「${chapter}-${sub}」練習卷。計算題 ${config.calculationCount} 題，應用題 ${config.wordProblemCount} 題。難度：${config.difficulty}。`,
       config: { 
         systemInstruction: SYSTEM_PROMPT,
-        responseMimeType: "application/json"
+        responseMimeType: "application/json",
+        responseSchema: HOMEWORK_SCHEMA
       }
     });
-    const data = robustExtractJSON(response.text);
+    const text = response.text || "";
+    const data = robustExtractJSON(text);
     if (!data) throw new Error("練習卷內容生成失敗");
     return data;
   } catch (e: any) {
