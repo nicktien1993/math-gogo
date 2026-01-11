@@ -33,6 +33,12 @@ const robustExtractJSON = (text: string) => {
   }
 };
 
+const validateApiKey = () => {
+  if (!process.env.API_KEY) {
+    throw new Error("API Key must be set when running in a browser. Please authorize the teaching assistant.");
+  }
+};
+
 const SYSTEM_PROMPT = `你是一位專業的台灣國小資源班特教老師。
 你的目標是為學生生成「微步化（小步子）」教材。
 1. 嚴禁使用 $ 符號，請用一般文字描述數學式。
@@ -105,7 +111,7 @@ const HOMEWORK_SCHEMA = {
 };
 
 export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]> => {
-  // Always create a new instance right before use to ensure updated API_KEY usage.
+  validateApiKey();
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
   try {
     const response = await ai.models.generateContent({
@@ -125,6 +131,7 @@ export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]>
 };
 
 export const generateHandoutFromText = async (params: SelectionParams, chapter: string, sub: string): Promise<HandoutContent> => {
+  validateApiKey();
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
   try {
     const response = await ai.models.generateContent({
@@ -146,6 +153,7 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
 };
 
 export const generateHomework = async (params: SelectionParams, chapter: string, sub: string, config: HomeworkConfig): Promise<HomeworkContent> => {
+  validateApiKey();
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
   try {
     const response = await ai.models.generateContent({

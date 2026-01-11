@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { BookOpen, ArrowLeft, Layers, FileText, AlertCircle, RefreshCw, ChevronLeft, Menu, Wand2, Search, Key, ExternalLink } from 'lucide-react';
-import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig, AIStudioProvider } from './types.ts';
+// Updated import to use renamed AIStudio interface
+import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig, AIStudio } from './types.ts';
 import { fetchChapters, generateHandoutFromText, generateHomework } from './geminiService.ts';
 import SelectionForm from './SelectionForm.tsx';
 import ChapterSelector from './ChapterSelector.tsx';
@@ -10,10 +11,10 @@ import HandoutViewer from './HandoutViewer.tsx';
 import HomeworkViewer from './HomeworkViewer.tsx';
 import HomeworkConfigSection from './HomeworkConfigSection.tsx';
 
-// Fix: Use 'any' to avoid type and modifier conflicts with pre-defined global 'aistudio' in the execution environment.
 declare global {
   interface Window {
-    aistudio: any;
+    // Fixed type declaration to match the expected AIStudio type from the environment and resolved any modifier conflicts
+    aistudio: AIStudio;
   }
 }
 
@@ -42,12 +43,14 @@ const App: React.FC = () => {
   useEffect(() => {
     const checkKey = async () => {
       try {
+        // 優先檢查 AI Studio 橋接器
         if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
           const selected = await window.aistudio.hasSelectedApiKey();
           setHasKey(selected);
         } else {
-          // If aistudio is not present, assume an environment with direct API_KEY access
-          setHasKey(true);
+          // 如果不在 AI Studio 環境，檢查環境變數是否已注入金鑰
+          const isEnvKeySet = !!process.env.API_KEY && process.env.API_KEY !== '';
+          setHasKey(isEnvKeySet);
         }
       } catch (e) {
         setHasKey(false);
@@ -61,11 +64,20 @@ const App: React.FC = () => {
       if (window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
         await window.aistudio.openSelectKey();
       }
-      // Rule: Assume success after calling openSelectKey to proceed immediately.
+      // 根據規範，呼叫選取後立即假設金鑰已準備好以繼續
       setHasKey(true);
     } catch (e) {
       console.error("Key selection failed", e);
     }
+  };
+
+  const handleGlobalError = (err: any) => {
+    const msg = err.message || String(err);
+    // 擷取 SDK 的金鑰缺失錯誤或權限錯誤
+    if (msg.includes("API Key must be set") || msg.includes("Requested entity was not found") || msg.includes("API_KEY_INVALID")) {
+      setHasKey(false);
+    }
+    setError(msg);
   };
 
   const handleSyncChapters = async () => {
@@ -75,12 +87,8 @@ const App: React.FC = () => {
       const data = await fetchChapters(params);
       setChapters(data);
     } catch (e: any) {
-      const msg = e.message || String(e);
-      // Rule: Prompt user to select a key again if request fails with 'Requested entity was not found.'
-      if (msg.includes("Requested entity was not found")) {
-        setHasKey(false);
-      }
-      setError(`[目錄獲取失敗] ${msg}`);
+      handleGlobalError(e);
+      setError(`[目錄獲取失敗] ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -97,11 +105,8 @@ const App: React.FC = () => {
       setHandout(data);
       setView('handout');
     } catch (err: any) {
-      const msg = err.message || String(err);
-      if (msg.includes("Requested entity was not found")) {
-        setHasKey(false);
-      }
-      setError(`[講義生成失敗] ${msg}`);
+      handleGlobalError(err);
+      setError(`[講義生成失敗] ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -116,11 +121,8 @@ const App: React.FC = () => {
       setHomework(data);
       setView('homework');
     } catch (err: any) {
-      const msg = err.message || String(err);
-      if (msg.includes("Requested entity was not found")) {
-        setHasKey(false);
-      }
-      setError(`[練習卷製作失敗] ${msg}`);
+      handleGlobalError(err);
+      setError(`[練習卷製作失敗] ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -129,28 +131,29 @@ const App: React.FC = () => {
   if (hasKey === false) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-white text-center">
-        <div className="max-w-md w-full bg-slate-800 p-12 rounded-[3rem] border border-slate-700 shadow-2xl">
-          <div className="w-24 h-24 bg-blue-600 rounded-3xl mx-auto flex items-center justify-center mb-8 shadow-xl">
-            <Key size={48} />
+        <div className="max-w-md w-full bg-slate-800 p-12 rounded-[3.5rem] border border-slate-700 shadow-2xl animate-in zoom-in-95 duration-500">
+          <div className="w-24 h-24 bg-blue-600 rounded-3xl mx-auto flex items-center justify-center mb-10 shadow-xl shadow-blue-500/20">
+            <Key size={48} className="animate-pulse" />
           </div>
-          <h1 className="text-4xl font-black mb-4 italic tracking-tighter">啟動教學助理</h1>
-          <p className="text-slate-400 font-bold mb-8 leading-relaxed">
-            您使用的是付費版 Gemini 3 模型。請先授權您的 Google API 金鑰專案，以開始生成教學講義。
+          <h1 className="text-4xl font-black mb-6 italic tracking-tighter">啟動教學助理</h1>
+          <p className="text-slate-400 font-bold mb-10 leading-relaxed px-4">
+            本系統使用付費版 Gemini 3 模型。請先透過您的 Google 專案選取 API 金鑰以進行教學講義生成。
           </p>
           <button 
             onClick={handleSelectKey}
-            className="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-2xl font-black text-xl transition-all shadow-lg flex items-center justify-center gap-3"
+            className="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-[2rem] font-black text-xl transition-all shadow-xl active:scale-95 flex items-center justify-center gap-3 group"
           >
-            <ExternalLink size={24} /> 點此進行授權
+            <ExternalLink size={24} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" /> 
+            點此選取 API 金鑰
           </button>
-          <div className="mt-6">
+          <div className="mt-8">
             <a 
               href="https://ai.google.dev/gemini-api/docs/billing" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="text-slate-500 text-sm hover:text-blue-400 transition-colors underline"
+              className="text-slate-500 text-xs hover:text-blue-400 transition-colors underline underline-offset-4"
             >
-              瞭解 Google Cloud 計費設定與 API 連結
+              瞭解 Google Cloud 計費與 API 授權方式
             </a>
           </div>
         </div>
@@ -183,7 +186,7 @@ const App: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-6">
-              <button onClick={() => { setShowSettings(true); setView('welcome'); }} className="flex items-center gap-2 text-slate-400 font-black hover:text-blue-600">
+              <button onClick={() => { setShowSettings(true); setView('welcome'); }} className="flex items-center gap-2 text-slate-400 font-black hover:text-blue-600 transition-colors">
                 <ArrowLeft size={20} /> 返回設定
               </button>
               <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-8 rounded-[2.5rem] text-white shadow-xl">
@@ -218,13 +221,13 @@ const App: React.FC = () => {
           <div className="h-full flex flex-col items-center justify-center max-w-2xl mx-auto">
             <div className="bg-white p-12 rounded-[4rem] border-4 border-rose-100 shadow-2xl text-center w-full">
               <AlertCircle size={80} className="text-rose-500 mx-auto mb-8" />
-              <h2 className="text-4xl font-black text-slate-900 mb-4">發現連線問題</h2>
+              <h2 className="text-4xl font-black text-slate-900 mb-4">執行時發生錯誤</h2>
               <div className="bg-rose-50 p-6 rounded-3xl text-rose-700 font-mono text-sm mb-10 text-left overflow-auto max-h-40 leading-relaxed">
                 {error}
               </div>
               <div className="flex flex-wrap gap-4 justify-center">
                 <button onClick={() => window.location.reload()} className="bg-slate-900 text-white px-10 py-5 rounded-[2rem] font-black flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl">
-                  <RefreshCw size={24} /> 重新整理
+                  <RefreshCw size={24} /> 重新整理網頁
                 </button>
               </div>
             </div>

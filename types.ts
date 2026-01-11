@@ -59,7 +59,8 @@ export interface HomeworkContent {
   checklist: string[]; 
 }
 
-export interface AIStudioProvider {
+// Renamed AIStudioProvider to AIStudio to resolve global type conflicts
+export interface AIStudio {
   hasSelectedApiKey: () => Promise<boolean>;
   openSelectKey: () => Promise<void>;
 }
