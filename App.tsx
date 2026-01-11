@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { BookOpen, ArrowLeft, Layers, FileText, AlertCircle, RefreshCw, ChevronLeft, Menu, Wand2, Search, Key, ExternalLink } from 'lucide-react';
 import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig, AIStudio } from './types.ts';
@@ -12,8 +11,11 @@ import HomeworkConfigSection from './HomeworkConfigSection.tsx';
 
 declare global {
   interface Window {
-    // Removed readonly modifier to fix modifier mismatch with other declarations
-    aistudio: AIStudio;
+    /**
+     * Fix: Added readonly modifier to match the existing global declaration in the environment.
+     * This resolves both the "identical modifiers" error and the "same type" mismatch error.
+     */
+    readonly aistudio: AIStudio;
   }
 }
 

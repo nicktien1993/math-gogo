@@ -5,7 +5,6 @@ import { getLocalChapters } from './curriculumData.ts';
 
 const robustExtractJSON = (text: string) => {
   if (!text) return null;
-  // 嘗試從 Markdown 標籤或純文字中擷取 JSON 區塊
   const firstBrace = text.indexOf('{');
   const lastBrace = text.lastIndexOf('}');
   const firstBracket = text.indexOf('[');
@@ -23,8 +22,6 @@ const robustExtractJSON = (text: string) => {
   try {
     return JSON.parse(jsonStr);
   } catch (e) {
-    console.error("JSON Parse Error. Raw text snippet:", text.substring(0, 100));
-    // 暴力清理：移除所有換行符號後再試一次
     try {
       return JSON.parse(jsonStr.replace(/\n/g, ' ').replace(/\r/g, ' '));
     } catch {
@@ -37,15 +34,16 @@ const SYSTEM_PROMPT = `你是一位專業的台灣國小資源班特教老師。
 你的目標是為學生生成「微步化（小步子）」教材。
 1. 嚴禁使用 $ 符號，請用一般文字描述數學式。
 2. 觀念必須簡單易懂。
-3. 必須回傳有效的 JSON 格式。
-4. 使用繁體中文。`;
+3. 圖解使用 SVG (ViewBox 0 0 400 250)，確保樣式簡潔且能清晰傳達概念。
+4. 必須回傳有效的 JSON 格式。
+5. 使用繁體中文。`;
 
 const HANDOUT_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     title: { type: Type.STRING },
     concept: { type: Type.STRING },
-    visualAidSvg: { type: Type.STRING, description: "SVG 程式碼，ViewBox 0 0 400 250" },
+    visualAidSvg: { type: Type.STRING },
     examples: {
       type: Type.ARRAY,
       items: {
@@ -66,8 +64,8 @@ const HANDOUT_SCHEMA = {
 };
 
 export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]> => {
-  const apiKey = process.env.API_KEY;
-  const ai = new GoogleGenAI({ apiKey: apiKey || '' });
+  const apiKey = process.env.API_KEY || '';
+  const ai = new GoogleGenAI({ apiKey });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -82,12 +80,12 @@ export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]>
 };
 
 export const generateHandoutFromText = async (params: SelectionParams, chapter: string, sub: string): Promise<HandoutContent> => {
-  const apiKey = process.env.API_KEY;
-  const ai = new GoogleGenAI({ apiKey: apiKey || '' });
+  const apiKey = process.env.API_KEY || '';
+  const ai = new GoogleGenAI({ apiKey });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
-      contents: `為資源班學生製作講義：單元「${chapter}-${sub}」。請拆解步驟，並提供視覺化圖解（SVG）。`,
+      contents: `為資源班學生製作講義：單元「${chapter}-${sub}」。難度：${params.difficulty}。請拆解步驟並提供視覺化圖解。`,
       config: { 
         systemInstruction: SYSTEM_PROMPT,
         responseMimeType: "application/json",
@@ -103,8 +101,8 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
 };
 
 export const generateHomework = async (params: SelectionParams, chapter: string, sub: string, config: HomeworkConfig): Promise<HomeworkContent> => {
-  const apiKey = process.env.API_KEY;
-  const ai = new GoogleGenAI({ apiKey: apiKey || '' });
+  const apiKey = process.env.API_KEY || '';
+  const ai = new GoogleGenAI({ apiKey });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
