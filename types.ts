@@ -12,11 +12,11 @@ export interface SelectionParams {
   semester: Semester;
   grade: Grade;
   difficulty: Difficulty;
-  showBopomofo: boolean; // 新增：是否顯示注音
+  showBopomofo: boolean;
 }
 
 export interface Chapter {
-  id: string;
+  id?: string;
   title: string;
   subChapters: string[];
 }
@@ -24,7 +24,6 @@ export interface Chapter {
 export interface HandoutContent {
   title: string;
   concept: string;
-  keyTerms?: Array<{ term: string; definition: string }>;
   visualAidSvg?: string; 
   examples: Array<{
     question: string;
@@ -32,9 +31,11 @@ export interface HandoutContent {
     answer: string;
     visualAidSvg?: string;
   }>;
-  exercises: Array<{
+  // Added exercises property to match preset data and component usage
+  exercises?: Array<{
     question: string;
     answer: string;
+    visualAidSvg?: string;
   }>;
   tips: string;
   checklist: string[]; 
@@ -49,28 +50,16 @@ export interface HomeworkConfig {
 export interface HomeworkContent {
   title: string;
   questions: Array<{
-    type: '計算題' | '應用題';
+    type: string;
     content: string;
     hint?: string;
-    answer?: string;
+    answer: string;
     visualAidSvg?: string;
   }>;
   checklist: string[]; 
 }
 
-export interface SpecialEdSettings {
-  showGrids: boolean;
-  colorCoding: boolean;
-  showArrows: boolean;
-  showChecklist: boolean;
-  fontSize: FontSize;
-  showBopomofo: boolean; // 新增：檢視器設定
-}
-
-export interface HistoryItem {
-  timestamp: number;
-  params: SelectionParams;
-  chapter: string;
-  sub: string;
-  content: HandoutContent;
+export interface AIStudio {
+  hasSelectedApiKey: () => Promise<boolean>;
+  openSelectKey: () => Promise<void>;
 }

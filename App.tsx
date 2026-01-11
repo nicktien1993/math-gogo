@@ -1,7 +1,7 @@
 
-import React, { useState, useCallback } from 'react';
-import { BookOpen, ArrowLeft, Layers, FileText, AlertCircle, RefreshCw, ChevronLeft, Menu, Wand2, Search, Bug } from 'lucide-react';
-import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig } from './types.ts';
+import React, { useState, useEffect, useCallback } from 'react';
+import { BookOpen, ArrowLeft, Layers, FileText, AlertCircle, RefreshCw, ChevronLeft, Menu, Wand2, Search, Key, ExternalLink } from 'lucide-react';
+import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig, AIStudio } from './types.ts';
 import { fetchChapters, generateHandoutFromText, generateHomework } from './geminiService.ts';
 import SelectionForm from './SelectionForm.tsx';
 import ChapterSelector from './ChapterSelector.tsx';
@@ -10,7 +10,15 @@ import HandoutViewer from './HandoutViewer.tsx';
 import HomeworkViewer from './HomeworkViewer.tsx';
 import HomeworkConfigSection from './HomeworkConfigSection.tsx';
 
+declare global {
+  interface Window {
+    // Removed readonly modifier to fix modifier mismatch with other declarations
+    aistudio: AIStudio;
+  }
+}
+
 const App: React.FC = () => {
+  const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<'welcome' | 'handout' | 'homework'>('welcome');
@@ -31,6 +39,32 @@ const App: React.FC = () => {
   const [handout, setHandout] = useState<HandoutContent | null>(null);
   const [homework, setHomework] = useState<HomeworkContent | null>(null);
 
+  useEffect(() => {
+    const checkKey = async () => {
+      try {
+        if (window.aistudio) {
+          const selected = await window.aistudio.hasSelectedApiKey();
+          setHasKey(selected);
+        } else {
+          setHasKey(true); // 如果不在特定環境，假設 key 已存在
+        }
+      } catch (e) {
+        setHasKey(false);
+      }
+    };
+    checkKey();
+  }, []);
+
+  const handleSelectKey = async () => {
+    try {
+      await window.aistudio.openSelectKey();
+      // Assume the key selection was successful to proceed to the app
+      setHasKey(true);
+    } catch (e) {
+      console.error("Key selection failed", e);
+    }
+  };
+
   const handleSyncChapters = async () => {
     setLoading(true);
     setError(null);
@@ -38,7 +72,7 @@ const App: React.FC = () => {
       const data = await fetchChapters(params);
       setChapters(data);
     } catch (e: any) {
-      setError(`[目錄錯誤] ${e.message}`);
+      setError(`[目錄獲取失敗] ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -55,7 +89,7 @@ const App: React.FC = () => {
       setHandout(data);
       setView('handout');
     } catch (err: any) {
-      setError(`[講義生成失敗] 此問題已紀錄並會嘗試修復。錯誤詳情：${err.message}`);
+      setError(`[講義生成失敗] ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -70,16 +104,38 @@ const App: React.FC = () => {
       setHomework(data);
       setView('homework');
     } catch (err: any) {
-      setError(`[練習卷錯誤] ${err.message}`);
+      setError(`[練習卷製作失敗] ${err.message}`);
     } finally {
       setLoading(false);
     }
   }, [params, currentChapter]);
 
+  if (hasKey === false) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-white text-center">
+        <div className="max-w-md w-full bg-slate-800 p-12 rounded-[3rem] border border-slate-700 shadow-2xl">
+          <div className="w-24 h-24 bg-blue-600 rounded-3xl mx-auto flex items-center justify-center mb-8 shadow-xl">
+            <Key size={48} />
+          </div>
+          <h1 className="text-4xl font-black mb-4 italic tracking-tighter">啟動教學助理</h1>
+          <p className="text-slate-400 font-bold mb-8 leading-relaxed">
+            您使用的是付費版 Gemini 3 模型。請先授權您的 Google API 金鑰專案，以開始生成教學講義。
+          </p>
+          <button 
+            onClick={handleSelectKey}
+            className="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-2xl font-black text-xl transition-all shadow-lg flex items-center justify-center gap-3"
+          >
+            <ExternalLink size={24} /> 點此進行授權
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex bg-slate-50 font-sans selection:bg-blue-100">
       {!isSidebarCollapsed && (
-        <aside className="w-96 bg-white p-6 border-r flex flex-col h-screen shrink-0 overflow-y-auto shadow-2xl z-50 transition-all">
+        <aside className="w-96 bg-white p-6 border-r flex flex-col h-screen shrink-0 overflow-y-auto shadow-2xl z-50">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-3 text-blue-600">
               <BookOpen size={32} strokeWidth={3} />
@@ -109,8 +165,8 @@ const App: React.FC = () => {
                 <div className="text-2xl font-black leading-tight">{currentChapter?.sub}</div>
               </div>
               <nav className="space-y-3">
-                <button onClick={() => setView('handout')} className={`w-full p-6 rounded-3xl font-black flex items-center gap-4 transition-all ${view === 'handout' ? 'bg-blue-600 text-white shadow-lg scale-105' : 'bg-slate-50 text-slate-400'}`}><Layers size={24} /> 教學講義</button>
-                <button onClick={() => setView('homework')} disabled={!homework} className={`w-full p-6 rounded-3xl font-black flex items-center gap-4 transition-all ${view === 'homework' ? 'bg-blue-600 text-white shadow-lg scale-105' : 'bg-slate-50 text-slate-400 opacity-50'}`}><FileText size={24} /> 練習卷</button>
+                <button onClick={() => setView('handout')} className={`w-full p-6 rounded-3xl font-black flex items-center gap-4 transition-all ${view === 'handout' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-400'}`}><Layers size={24} /> 教學講義</button>
+                <button onClick={() => setView('homework')} disabled={!homework} className={`w-full p-6 rounded-3xl font-black flex items-center gap-4 transition-all ${view === 'homework' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-400 opacity-50'}`}><FileText size={24} /> 練習卷</button>
               </nav>
             </div>
           )}
@@ -127,29 +183,22 @@ const App: React.FC = () => {
         {loading && (
           <div className="h-full flex flex-col items-center justify-center text-center">
             <div className="w-20 h-20 border-8 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-8"></div>
-            <h2 className="text-4xl font-black text-slate-900 mb-2 italic">AI 老師正在撰寫講義...</h2>
-            <p className="text-slate-400 font-bold">這通常需要 5-10 秒，請稍候</p>
+            <h2 className="text-4xl font-black text-slate-900 mb-2 italic">AI 正在計算並撰寫講義...</h2>
+            <p className="text-slate-400 font-bold italic">這可能需要 10-15 秒鐘的時間</p>
           </div>
         )}
 
         {error && !loading && (
-          <div className="h-full flex flex-col items-center justify-center max-w-2xl mx-auto px-6">
-            <div className="bg-white p-12 rounded-[4rem] border-4 border-rose-100 shadow-2xl text-center w-full relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-8 opacity-5">
-                <Bug size={120} />
-              </div>
+          <div className="h-full flex flex-col items-center justify-center max-w-2xl mx-auto">
+            <div className="bg-white p-12 rounded-[4rem] border-4 border-rose-100 shadow-2xl text-center w-full">
               <AlertCircle size={80} className="text-rose-500 mx-auto mb-8" />
-              <h2 className="text-4xl font-black text-slate-900 mb-4">生成失敗</h2>
-              <p className="text-slate-500 font-bold mb-8">別擔心，這通常是 AI 回傳格式不穩。請再試一次或更換單元。</p>
-              <div className="bg-rose-50 p-8 rounded-3xl text-rose-700 font-mono text-left text-sm mb-10 overflow-auto max-h-48 leading-relaxed border border-rose-100">
+              <h2 className="text-4xl font-black text-slate-900 mb-4">發現連線問題</h2>
+              <div className="bg-rose-50 p-6 rounded-3xl text-rose-700 font-mono text-sm mb-10 text-left overflow-auto max-h-40 leading-relaxed">
                 {error}
               </div>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <div className="flex flex-wrap gap-4 justify-center">
                 <button onClick={() => window.location.reload()} className="bg-slate-900 text-white px-10 py-5 rounded-[2rem] font-black flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl">
-                  <RefreshCw size={24} /> 點此重試
-                </button>
-                <button onClick={() => { setShowSettings(true); setError(null); setView('welcome'); }} className="bg-slate-100 text-slate-600 px-10 py-5 rounded-[2rem] font-black flex items-center justify-center gap-3 hover:bg-slate-200 transition-all">
-                  <Search size={24} /> 換個單元試試
+                  <RefreshCw size={24} /> 重新整理
                 </button>
               </div>
             </div>
@@ -161,22 +210,22 @@ const App: React.FC = () => {
             <div className="w-40 h-40 bg-white rounded-[3.5rem] flex items-center justify-center text-blue-600 shadow-2xl mb-12 border-8 border-blue-50">
               <Wand2 size={80} strokeWidth={2.5} />
             </div>
-            <h2 className="text-6xl font-black text-slate-900 mb-6 italic tracking-tighter">準備好開始上課了嗎？</h2>
+            <h2 className="text-6xl font-black text-slate-900 mb-6 italic tracking-tighter">選取單元開始上課</h2>
             <p className="text-slate-400 font-bold text-2xl max-w-xl leading-relaxed">
-              請從左側選取一個單元。AI 會根據您的學期、出版社，自動產出最適合學生的教學資源。
+              點擊左側單元目錄，AI 將為您生成適合學生的「微步化」教學講義。
             </p>
           </div>
         )}
 
         {!loading && !error && view === 'handout' && handout && (
-          <div className="max-w-5xl mx-auto space-y-16 animate-in fade-in slide-in-from-bottom-12 duration-700">
+          <div className="max-w-5xl mx-auto space-y-16">
             <HandoutViewer content={handout} params={params} theme="default" />
             <div className="no-print"><HomeworkConfigSection onGenerate={handleGenerateHomework} isLoading={loading} /></div>
           </div>
         )}
 
         {!loading && !error && view === 'homework' && homework && (
-          <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-12 duration-700">
+          <div className="max-w-5xl mx-auto">
             <HomeworkViewer content={homework} params={params} theme="default" />
           </div>
         )}
