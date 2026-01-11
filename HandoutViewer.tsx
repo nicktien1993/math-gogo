@@ -109,8 +109,8 @@ const StepContent: React.FC<{ text: string }> = ({ text }) => {
 
 const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
   const [visibleCanvas, setVisibleCanvas] = useState<Record<string, boolean>>({});
-  // 紀錄每個例題目前顯示到第幾個步驟
   const [activeSteps, setActiveSteps] = useState<Record<number, number>>({});
+  const [showGlobalNotes, setShowGlobalNotes] = useState(false);
   
   const structuredConcepts = useMemo(() => {
     if (!content.concept) return [];
@@ -138,9 +138,18 @@ const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
             </span>
           </div>
         </div>
+        <div className="flex flex-col gap-4 min-w-[200px]">
+          <button 
+            onClick={() => setShowGlobalNotes(!showGlobalNotes)} 
+            className={`w-full py-4 px-6 rounded-2xl font-black text-sm transition-all shadow-xl active:scale-95 flex items-center justify-center gap-3 ${showGlobalNotes ? 'bg-rose-500 text-white' : 'bg-white text-slate-900'}`}
+          >
+            {showGlobalNotes ? '✕ 關閉全頁筆記' : '✏️ 開啟全頁筆記'}
+          </button>
+        </div>
       </div>
 
       <div className="p-10 md:p-24 space-y-32">
+        {/* 核心觀念 */}
         <section className="relative">
           <div className="flex items-center gap-6 mb-16">
             <div className="w-4 h-14 bg-blue-600 rounded-full shadow-[0_0_15px_rgba(37,99,235,0.4)]"></div>
@@ -160,6 +169,7 @@ const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
           )}
         </section>
 
+        {/* 實戰範例 */}
         <section className="space-y-48">
           <div className="h-[2px] bg-slate-100 w-full"></div>
           {(content.examples || []).map((ex, i) => (
@@ -210,7 +220,6 @@ const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
                   </div>
                 ))}
                 
-                {/* 互動按鈕與答案 */}
                 <div className="mt-16 pt-16 border-t-4 border-dashed border-blue-200 flex flex-col md:flex-row items-center gap-8 min-h-[120px]">
                   { (activeSteps[i] || 0) < (ex.stepByStep || []).length ? (
                     <button 
@@ -234,6 +243,19 @@ const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
             </div>
           ))}
         </section>
+
+        {/* 老師補充與全頁筆記區 */}
+        {(showGlobalNotes || (typeof window !== 'undefined' && window.location.search.includes('print'))) && (
+          <section className="mt-48 pt-32 border-t-8 border-slate-100 page-break-before-always">
+             <div className="flex items-center gap-6 mb-16">
+              <div className="w-4 h-14 bg-rose-500 rounded-full shadow-[0_0_15px_rgba(244,63,94,0.4)]"></div>
+              <h2 className="text-slate-900 font-black text-5xl tracking-tighter italic">老師補充與筆記區</h2>
+            </div>
+            <div className="p-8 bg-white border-4 border-dashed border-slate-200 rounded-[3rem]">
+              <DrawingCanvas id="global-handout-notes" height={800} />
+            </div>
+          </section>
+        )}
       </div>
 
       <div className="p-12 border-t border-slate-100 flex justify-center no-print bg-slate-50">

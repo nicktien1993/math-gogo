@@ -2,48 +2,52 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { SelectionParams, Chapter, HandoutContent, HomeworkConfig, HomeworkContent } from './types.ts';
 import { getLocalChapters } from './curriculumData.ts';
-import { PRESET_HANDOUTS } from './handoutData.ts';
 
 const SYSTEM_INSTRUCTION = `你是一位專業的台灣國小資源班特教老師。你的任務是生成一份「微步化」教材。
 
-核心繪圖規範 (visualAidSvg)：
-1. 使用 <svg viewBox="0 0 400 250">，背景必須透明或純白。
-2. **主題特化繪圖**：
-   - **小數加減**：必須繪製「直式位值對齊表」。使用垂直虛線區隔個位、十分位、百分位，並用顯眼的實心圓點標示「小數點」，幫助學生理解對齊原則。
-   - **分數**：使用矩形或圓形面積模型，清楚切分等份。
-   - **幾何面積**：繪製圖形並標示輔助線（如高），但不可在圖中標示計算結果。
-3. **嚴禁算式**：絕對禁止在 <svg> 標籤外或內部包含任何算式（如 1.2+0.5）、答案或文字描述。
-4. **微步化觀念**：concept 必須拆解為短句，每句 30 字內。`;
+核心規範：
+1. 嚴禁使用 $ 符號，所有數學算式直接寫純文字。
+2. 圖示使用簡潔的 SVG，ViewBox="0 0 400 250"。
+3. 核心觀念 (concept) 必須拆解為短句，並用「重點一：...」開頭。
+4. 練習卷 (Homework) 必須包含題目與老師提示，但「嚴禁」在練習卷內容中出現答案。`;
 
-const CACHE_PREFIX = 'MATH_HANDOUT_V13_';
-const HW_CACHE_PREFIX = 'MATH_HW_V13_';
-const CHAPTERS_CACHE_PREFIX = 'MATH_CHAPTERS_V12_';
-
+/**
+ * 強大的 JSON 清洗與解析函式
+ * 支援偵測物件 {} 與 陣列 []
+ */
 const cleanAndParse = (text: any) => {
   if (!text) return null;
   let clean = typeof text === 'string' ? text : String(text);
-  try {
-    clean = clean.replace(/```json/gi, '').replace(/```/gi, '').trim();
-    const firstBrace = clean.indexOf('{');
-    const firstBracket = clean.indexOf('[');
-    let startIdx = -1;
-    if (firstBrace !== -1 && firstBracket !== -1) startIdx = Math.min(firstBrace, firstBracket);
-    else if (firstBrace !== -1) startIdx = firstBrace;
-    else if (firstBracket !== -1) startIdx = firstBracket;
+  
+  // 移除 Markdown 程式碼區塊標記
+  clean = clean.replace(/```json/gi, '').replace(/```/gi, '').trim();
 
-    const lastBrace = clean.lastIndexOf('}');
-    const lastBracket = clean.lastIndexOf(']');
-    let endIdx = -1;
-    if (lastBrace !== -1 && lastBracket !== -1) endIdx = Math.max(lastBrace, lastBracket);
-    else if (lastBrace !== -1) endIdx = lastBrace;
-    else if (lastBracket !== -1) endIdx = lastBracket;
+  // 尋找 JSON 的起始點與結束點 (相容物件與陣列)
+  const firstBrace = clean.indexOf('{');
+  const firstBracket = clean.indexOf('[');
+  
+  let startIdx = -1;
+  let endChar = '';
+  
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    startIdx = firstBrace;
+    endChar = '}';
+  } else if (firstBracket !== -1) {
+    startIdx = firstBracket;
+    endChar = ']';
+  }
 
-    if (startIdx !== -1 && endIdx !== -1 && startIdx < endIdx) {
+  if (startIdx !== -1) {
+    const endIdx = clean.lastIndexOf(endChar);
+    if (endIdx !== -1) {
       clean = clean.substring(startIdx, endIdx + 1);
     }
+  }
+
+  try {
     return JSON.parse(clean);
   } catch (e) {
-    console.error("JSON Parsing Error:", e);
+    console.error("JSON Parsing Error:", e, "Cleaned result:", clean);
     return null;
   }
 };
@@ -54,10 +58,7 @@ const CHAPTER_LIST_SCHEMA = {
     type: Type.OBJECT,
     properties: {
       title: { type: Type.STRING },
-      subChapters: { 
-        type: Type.ARRAY, 
-        items: { type: Type.STRING }
-      }
+      subChapters: { type: Type.ARRAY, items: { type: Type.STRING } }
     },
     required: ["title", "subChapters"]
   }
@@ -88,8 +89,31 @@ const HANDOUT_SCHEMA = {
   required: ["title", "concept", "examples"]
 };
 
+const HOMEWORK_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING },
+    questions: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          type: { type: Type.STRING },
+          content: { type: Type.STRING },
+          hint: { type: Type.STRING },
+          answer: { type: Type.STRING },
+          visualAidSvg: { type: Type.STRING }
+        },
+        required: ["content", "answer"]
+      }
+    },
+    checklist: { type: Type.ARRAY, items: { type: Type.STRING } }
+  },
+  required: ["title", "questions"]
+};
+
 export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]> => {
-  const cacheKey = `${CHAPTERS_CACHE_PREFIX}${params.publisher}_${params.grade}_${params.semester}`;
+  const cacheKey = `MATH_CHAPTERS_V15_${params.publisher}_${params.grade}_${params.semester}`;
   const cached = localStorage.getItem(cacheKey);
   if (cached) return JSON.parse(cached);
 
@@ -97,9 +121,8 @@ export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]>
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `請詳細列出台灣國小數學「${params.publisher}版」${params.grade}${params.semester}的課程目錄。回傳 JSON 陣列，每個物件包含 title 和 subChapters。`,
+      contents: `列出台灣國小數學「${params.publisher}版」${params.grade}${params.semester}目錄。請嚴格遵守 JSON 陣列格式回傳。`,
       config: { 
-        systemInstruction: "你是一個專業課程目錄資料庫。請回傳嚴格符合 JSON Schema 的目錄結構。",
         responseMimeType: "application/json",
         responseSchema: CHAPTER_LIST_SCHEMA
       }
@@ -109,24 +132,18 @@ export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]>
       localStorage.setItem(cacheKey, JSON.stringify(data));
       return data;
     }
-  } catch (e) { console.error("Fetch Chapters Error:", e); }
+  } catch (e) { 
+    console.error("Fetch Chapters Error:", e); 
+  }
   return getLocalChapters(params.publisher, params.grade, params.semester);
 };
 
 export const generateHandoutFromText = async (params: SelectionParams, chapter: string, sub: string): Promise<HandoutContent> => {
-  const cacheKey = `${CACHE_PREFIX}${params.publisher}_${params.grade}_${params.semester}_${chapter}_${sub}`;
-  const handoutKey = `${params.publisher}-${params.grade}-${params.semester}-${chapter}-${sub}`;
-  if (PRESET_HANDOUTS[handoutKey]) return PRESET_HANDOUTS[handoutKey];
-  const cached = localStorage.getItem(cacheKey);
-  if (cached) return JSON.parse(cached);
-
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-  const prompt = `針對「${chapter} - ${sub}」生成資源班教學講義。若是計算題，請在 visualAidSvg 中畫出對齊格或視覺化結構模型。嚴禁在圖中寫出答案。`;
-  
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
+      model: 'gemini-3-pro-preview',
+      contents: `為資源班學生生成「${chapter} - ${sub}」講義。目標是微步化拆解並提供 SVG 視覺輔助。`,
       config: { 
         systemInstruction: SYSTEM_INSTRUCTION, 
         responseMimeType: "application/json", 
@@ -134,31 +151,32 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
       }
     });
     const data = cleanAndParse(response.text);
-    if (data) {
-      localStorage.setItem(cacheKey, JSON.stringify(data));
-      return data;
-    }
-  } catch (e) { throw e; }
-  throw new Error("生成失敗");
+    if (data) return data;
+  } catch (e) { 
+    console.error("Generate Handout Error:", e);
+    throw e; 
+  }
+  throw new Error("講義生成內容解析失敗");
 };
 
 export const generateHomework = async (params: SelectionParams, chapter: string, sub: string, config: HomeworkConfig): Promise<HomeworkContent> => {
-  const cacheKey = `${HW_CACHE_PREFIX}${params.publisher}_${params.grade}_${params.semester}_${chapter}_${sub}_${config.difficulty}`;
-  const cached = localStorage.getItem(cacheKey);
-  if (cached) return JSON.parse(cached);
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-  const prompt = `生成「${chapter}-${sub}」練習卷。包含 ${config.calculationCount} 題計算與 ${config.wordProblemCount} 題應用。`;
+  const prompt = `為單元「${chapter}-${sub}」生成練習卷。包含 ${config.calculationCount} 題計算與 ${config.wordProblemCount} 題應用。難度為 ${config.difficulty}。注意：回傳內容中絕對不能出現答案提示給學生看到。`;
+  
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: prompt,
-      config: { systemInstruction: SYSTEM_INSTRUCTION, responseMimeType: "application/json" }
+      config: { 
+        systemInstruction: SYSTEM_INSTRUCTION, 
+        responseMimeType: "application/json",
+        responseSchema: HOMEWORK_SCHEMA
+      }
     });
     const data = cleanAndParse(response.text);
-    if (data) {
-      localStorage.setItem(cacheKey, JSON.stringify(data));
-      return data;
-    }
-  } catch (e) {}
-  throw new Error("練習卷生成失敗");
+    if (data) return data;
+  } catch (e) {
+    console.error("Homework Generation API Error:", e);
+  }
+  throw new Error("練習卷生成失敗，請檢查 API 金鑰額度或網路狀態。");
 };

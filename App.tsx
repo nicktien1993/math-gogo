@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { BookOpen, ArrowLeft, LayoutDashboard, Settings, Layers, FileText, AlertCircle, RefreshCw, ChevronLeft, Menu, History, Clock } from 'lucide-react';
+import { BookOpen, ArrowLeft, LayoutDashboard, Settings, Layers, FileText, AlertCircle, RefreshCw, ChevronLeft, Menu, History, Clock, Key } from 'lucide-react';
 import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig, HistoryItem } from './types.ts';
 import { fetchChapters, generateHandoutFromText, generateHomework } from './geminiService.ts';
 import SelectionForm from './SelectionForm.tsx';
@@ -65,15 +65,20 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // 儲存歷史紀錄
   const addToHistory = (item: HistoryItem) => {
     setHistory(prev => {
-      // 移除重複的（相同單元），並保持最新在最前面
       const filtered = prev.filter(h => h.sub !== item.sub || h.chapter !== item.chapter);
-      const updated = [item, ...filtered].slice(0, 10); // 只保留最近 10 筆
+      const updated = [item, ...filtered].slice(0, 10);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
       return updated;
     });
+  };
+
+  const handleOpenKeySelector = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      handleRetry();
+    }
   };
 
   const loadChapters = useCallback(async () => {
@@ -83,7 +88,12 @@ const App: React.FC = () => {
       const data = await fetchChapters(params);
       setChapters(data);
     } catch (e: any) {
-      setError("無法取得課程目錄，請檢查網路連線或 API Key 是否正確。");
+      const msg = e.message || "";
+      if (msg.includes("not found") || msg.includes("401") || msg.includes("403")) {
+        setError("API 金鑰無效或尚未設定。請點擊下方按鈕重新選取金鑰。");
+      } else {
+        setError("課程目錄載入失敗，請確認網路連線穩定。");
+      }
     } finally {
       setLoading(false);
     }
@@ -114,26 +124,34 @@ const App: React.FC = () => {
       setHandout(data);
       if (currentChapter?.sub !== sub) setHomework(null);
       setView('handout');
-      
-      // 存入歷史
-      addToHistory({
-        timestamp: Date.now(),
-        params: { ...params },
-        chapter,
-        sub,
-        content: data
-      });
+      addToHistory({ timestamp: Date.now(), params: { ...params }, chapter, sub, content: data });
     } catch (err: any) {
-      console.error("Generate Error:", err);
-      if (!isRetry) {
+      const msg = err.message || "";
+      if (msg.includes("not found")) {
+        setError("API 金鑰授權失敗，請確保您已選取正確的付費金鑰或專案。");
+      } else if (!isRetry) {
         handleSelectUnit(chapter, sub, true);
         return;
+      } else {
+        setError("講義生成失敗。這可能是因為 AI 格式解析錯誤或頻率限制。");
       }
-      setError(err.message || "講義生成失敗，請確認 API Key 狀態。");
     } finally {
       setLoading(false);
     }
   }, [params, currentChapter]);
+
+  const handleRetry = () => {
+    setError(null);
+    if (currentChapter) {
+      if (view === 'homework') {
+        handleGenerateHomework({ calculationCount: 3, wordProblemCount: 2, difficulty: params.difficulty });
+      } else {
+        handleSelectUnit(currentChapter.title, currentChapter.sub, false);
+      }
+    } else {
+      loadChapters();
+    }
+  };
 
   const loadHistoryItem = (item: HistoryItem) => {
     setParams(item.params);
@@ -153,24 +171,11 @@ const App: React.FC = () => {
       setHomework(data);
       setView('homework');
     } catch (err: any) {
-      setError("練習卷生成失敗，可能是 API 呼叫頻率過高。");
+      setError("練習卷生成失敗。建議檢查 API 金鑰是否具備足夠的 quota 或重新選取金鑰。");
     } finally {
       setLoading(false);
     }
   }, [params, currentChapter]);
-
-  const handleRetry = () => {
-    if (currentChapter) {
-      handleSelectUnit(currentChapter.title, currentChapter.sub, false);
-    } else {
-      loadChapters();
-    }
-  };
-
-  const formatTime = (ts: number) => {
-    const date = new Date(ts);
-    return `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
-  };
 
   return (
     <div className="min-h-screen flex bg-slate-50 transition-all duration-500 ease-in-out">
@@ -208,11 +213,10 @@ const App: React.FC = () => {
               <ChapterSelector chapters={chapters} onSelect={(c, s) => handleSelectUnit(c, s)} isLoading={loading} />
               <ManualUnitInput onGenerate={(c, s) => handleSelectUnit(c, s)} isLoading={loading} />
               
-              {/* 歷史紀錄區塊 */}
               {history.length > 0 && (
                 <div className="mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                   <div className="flex items-center gap-2 mb-4 text-slate-400 font-black text-xs uppercase tracking-widest px-2">
-                    <History size={14} /> 最近生成紀錄
+                    <Clock size={14} /> 最近生成紀錄
                   </div>
                   <div className="space-y-3">
                     {history.map((item, idx) => (
@@ -221,14 +225,11 @@ const App: React.FC = () => {
                         onClick={() => loadHistoryItem(item)}
                         className="w-full text-left p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-blue-300 hover:bg-blue-50/50 transition-all group relative overflow-hidden"
                       >
-                        <div className="flex justify-between items-start mb-1">
-                          <span className="text-xs font-black text-blue-600/60">{item.params.publisher} {item.params.grade}</span>
-                          <span className="text-[10px] font-bold text-slate-300 flex items-center gap-1">
-                            <Clock size={10} /> {formatTime(item.timestamp)}
-                          </span>
-                        </div>
                         <div className="font-bold text-slate-700 truncate text-sm">
                           {item.sub}
+                        </div>
+                        <div className="text-[10px] font-black text-blue-600/40 uppercase mt-1">
+                          {item.params.publisher} {item.params.grade}
                         </div>
                       </button>
                     ))}
@@ -287,8 +288,10 @@ const App: React.FC = () => {
         </div>
         
         <div className="pt-6 border-t border-slate-100 mt-auto flex items-center justify-between shrink-0">
-          <button onClick={() => window.aistudio?.openSelectKey()} className="text-[10px] font-black text-slate-300 uppercase tracking-widest hover:text-blue-600">Settings</button>
-          <span className="text-[10px] font-black text-slate-200 uppercase tracking-widest">V8.5 History-Ready</span>
+          <button onClick={() => window.aistudio?.openSelectKey()} className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-blue-600 transition-colors">
+            <Key size={12} /> API Key Settings
+          </button>
+          <span className="text-[10px] font-black text-slate-200 uppercase tracking-widest">V15.0 Parse-Optimized</span>
         </div>
       </aside>
 
@@ -301,7 +304,7 @@ const App: React.FC = () => {
             </div>
             <div className="text-center">
               <p className="font-black text-slate-700 text-3xl mb-3 tracking-tighter italic">{LOADING_MESSAGES[loadingMsgIdx]}</p>
-              <p className="text-slate-400 font-bold text-sm tracking-widest uppercase">系統正調度穩定節點中</p>
+              <p className="text-slate-400 font-bold text-sm tracking-widest uppercase">正在解析 AI 的教育策略</p>
             </div>
           </div>
         )}
@@ -311,14 +314,29 @@ const App: React.FC = () => {
             <div className="bg-white p-12 rounded-[3.5rem] border-2 border-rose-100 shadow-2xl mb-12 relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-2 bg-rose-500"></div>
               <AlertCircle size={80} className="text-rose-500 mx-auto mb-6" />
-              <h3 className="text-3xl font-black text-slate-800 mb-4 tracking-tighter italic">連線或格式不穩定</h3>
+              <h3 className="text-3xl font-black text-slate-800 mb-4 tracking-tighter italic">生成過程遇到阻礙</h3>
               <p className="text-slate-500 font-bold mb-8 leading-relaxed italic">{error}</p>
-              <button 
-                onClick={handleRetry}
-                className="bg-rose-500 hover:bg-rose-600 text-white px-12 py-5 rounded-[2rem] font-black text-2xl shadow-xl transition-all flex items-center gap-4 mx-auto active:scale-95"
-              >
-                <RefreshCw size={24} /> 再次重試生成
-              </button>
+              
+              <div className="flex flex-col gap-4">
+                <button 
+                  onClick={handleRetry}
+                  className="bg-rose-500 hover:bg-rose-600 text-white px-10 py-5 rounded-[2rem] font-black text-xl shadow-xl transition-all flex items-center justify-center gap-4 active:scale-95"
+                >
+                  <RefreshCw size={24} /> 再次嘗試生成
+                </button>
+                <button 
+                  onClick={handleOpenKeySelector}
+                  className="bg-slate-800 hover:bg-black text-white px-10 py-5 rounded-[2rem] font-black text-xl shadow-xl transition-all flex items-center justify-center gap-4 active:scale-95"
+                >
+                  <Key size={24} /> 🔑 重新選取 API 金鑰
+                </button>
+                <button 
+                  onClick={() => { setShowSettings(true); setError(null); setView('welcome'); }}
+                  className="text-slate-400 font-bold hover:text-slate-600 transition-colors pt-2"
+                >
+                  返回單元設定
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -326,7 +344,7 @@ const App: React.FC = () => {
         {!loading && !error && view === 'welcome' && (
           <div className="h-full flex flex-col items-center justify-center text-center select-none opacity-20">
             <LayoutDashboard size={120} className="text-slate-300 mb-8" />
-            <h2 className="text-5xl font-black italic tracking-tighter text-slate-300">請由左側單元開始生成教材</h2>
+            <h2 className="text-5xl font-black italic tracking-tighter text-slate-300">請從左側功能列開始</h2>
           </div>
         )}
 
