@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { BookOpen, ArrowLeft, LayoutDashboard, Settings, Layers, FileText, AlertCircle, RefreshCw, ChevronLeft, Menu } from 'lucide-react';
-import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig } from './types.ts';
+import { BookOpen, ArrowLeft, LayoutDashboard, Settings, Layers, FileText, AlertCircle, RefreshCw, ChevronLeft, Menu, History, Clock } from 'lucide-react';
+import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig, HistoryItem } from './types.ts';
 import { fetchChapters, generateHandoutFromText, generateHomework } from './geminiService.ts';
 import SelectionForm from './SelectionForm.tsx';
 import ChapterSelector from './ChapterSelector.tsx';
@@ -28,6 +28,8 @@ const LOADING_MESSAGES = [
   "正在加速運算，請稍候..."
 ];
 
+const HISTORY_KEY = 'MATH_APP_HISTORY_V1';
+
 const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +51,30 @@ const App: React.FC = () => {
   const [currentChapter, setCurrentChapter] = useState<{ title: string; sub: string } | null>(null);
   const [handout, setHandout] = useState<HandoutContent | null>(null);
   const [homework, setHomework] = useState<HomeworkContent | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+
+  // 載入歷史紀錄
+  useEffect(() => {
+    const saved = localStorage.getItem(HISTORY_KEY);
+    if (saved) {
+      try {
+        setHistory(JSON.parse(saved));
+      } catch (e) {
+        console.error("History loading failed", e);
+      }
+    }
+  }, []);
+
+  // 儲存歷史紀錄
+  const addToHistory = (item: HistoryItem) => {
+    setHistory(prev => {
+      // 移除重複的（相同單元），並保持最新在最前面
+      const filtered = prev.filter(h => h.sub !== item.sub || h.chapter !== item.chapter);
+      const updated = [item, ...filtered].slice(0, 10); // 只保留最近 10 筆
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   const loadChapters = useCallback(async () => {
     setLoading(true);
@@ -88,6 +114,15 @@ const App: React.FC = () => {
       setHandout(data);
       if (currentChapter?.sub !== sub) setHomework(null);
       setView('handout');
+      
+      // 存入歷史
+      addToHistory({
+        timestamp: Date.now(),
+        params: { ...params },
+        chapter,
+        sub,
+        content: data
+      });
     } catch (err: any) {
       console.error("Generate Error:", err);
       if (!isRetry) {
@@ -99,6 +134,15 @@ const App: React.FC = () => {
       setLoading(false);
     }
   }, [params, currentChapter]);
+
+  const loadHistoryItem = (item: HistoryItem) => {
+    setParams(item.params);
+    setCurrentChapter({ title: item.chapter, sub: item.sub });
+    setHandout(item.content);
+    setHomework(null);
+    setView('handout');
+    setShowSettings(false);
+  };
 
   const handleGenerateHomework = useCallback(async (config: HomeworkConfig) => {
     if (!currentChapter) return;
@@ -123,23 +167,22 @@ const App: React.FC = () => {
     }
   };
 
+  const formatTime = (ts: number) => {
+    const date = new Date(ts);
+    return `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+  };
+
   return (
     <div className="min-h-screen flex bg-slate-50 transition-all duration-500 ease-in-out">
-      {/* 浮動展開按鈕 (側邊欄收合時顯示) */}
       {isSidebarCollapsed && (
         <button
           onClick={() => setIsSidebarCollapsed(false)}
           className="fixed left-6 top-6 z-50 p-4 bg-white rounded-2xl shadow-2xl border border-slate-200 text-blue-600 hover:scale-110 active:scale-95 transition-all no-print group"
-          title="展開側邊欄"
         >
           <Menu size={24} strokeWidth={3} />
-          <span className="absolute left-full ml-4 bg-slate-800 text-white text-xs px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity">
-            打開選單
-          </span>
         </button>
       )}
 
-      {/* 側邊欄 */}
       <aside className={`
         ${isSidebarCollapsed ? 'w-0 opacity-0 pointer-events-none -translate-x-full' : 'w-96 opacity-100 translate-x-0'}
         bg-white no-print p-6 flex flex-col h-screen sticky top-0 border-r border-slate-200 shadow-2xl z-40
@@ -153,7 +196,6 @@ const App: React.FC = () => {
           <button 
             onClick={() => setIsSidebarCollapsed(true)}
             className="p-2 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-blue-600 transition-colors"
-            title="收合側邊欄"
           >
             <ChevronLeft size={24} strokeWidth={3} />
           </button>
@@ -161,10 +203,38 @@ const App: React.FC = () => {
         
         <div className="flex-1 overflow-y-auto pr-2 space-y-8 custom-scrollbar">
           {showSettings ? (
-            <div className="space-y-8">
+            <div className="space-y-8 pb-10">
               <SelectionForm params={params} onChange={setParams} isLoading={loading} />
               <ChapterSelector chapters={chapters} onSelect={(c, s) => handleSelectUnit(c, s)} isLoading={loading} />
               <ManualUnitInput onGenerate={(c, s) => handleSelectUnit(c, s)} isLoading={loading} />
+              
+              {/* 歷史紀錄區塊 */}
+              {history.length > 0 && (
+                <div className="mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="flex items-center gap-2 mb-4 text-slate-400 font-black text-xs uppercase tracking-widest px-2">
+                    <History size={14} /> 最近生成紀錄
+                  </div>
+                  <div className="space-y-3">
+                    {history.map((item, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => loadHistoryItem(item)}
+                        className="w-full text-left p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-blue-300 hover:bg-blue-50/50 transition-all group relative overflow-hidden"
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-xs font-black text-blue-600/60">{item.params.publisher} {item.params.grade}</span>
+                          <span className="text-[10px] font-bold text-slate-300 flex items-center gap-1">
+                            <Clock size={10} /> {formatTime(item.timestamp)}
+                          </span>
+                        </div>
+                        <div className="font-bold text-slate-700 truncate text-sm">
+                          {item.sub}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-6">
@@ -218,11 +288,10 @@ const App: React.FC = () => {
         
         <div className="pt-6 border-t border-slate-100 mt-auto flex items-center justify-between shrink-0">
           <button onClick={() => window.aistudio?.openSelectKey()} className="text-[10px] font-black text-slate-300 uppercase tracking-widest hover:text-blue-600">Settings</button>
-          <span className="text-[10px] font-black text-slate-200 uppercase tracking-widest">V8.2 Stable</span>
+          <span className="text-[10px] font-black text-slate-200 uppercase tracking-widest">V8.5 History-Ready</span>
         </div>
       </aside>
 
-      {/* 主內容區 */}
       <main className="flex-1 p-8 md:p-16 lg:p-24 overflow-y-auto bg-slate-50 scroll-smooth transition-all duration-500 ease-in-out">
         {loading && (
           <div className="flex flex-col items-center justify-center h-full gap-8 animate-in fade-in duration-300">

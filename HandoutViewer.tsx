@@ -17,14 +17,11 @@ export const renderMathContent = (text: any, colorCoding: boolean = true) => {
   const hasSvg = /<svg[\s\S]*?<\/svg>/i.test(processed);
   
   if (hasSvg) {
-    // Process SVG parts: Remove hardcoded sizes and ensure viewBox exists
     processed = processed.replace(/(<svg[\s\S]*?<\/svg>)/gi, (svgMatch) => {
-      // Robust removal of width and height attributes (handles units like px, em, %)
       let cleanedSvg = svgMatch
         .replace(/\bwidth=["'][^"']+["']/gi, '')
         .replace(/\bheight=["'][^"']+["']/gi, '');
 
-      // Add default viewBox if missing
       if (!cleanedSvg.toLowerCase().includes('viewbox')) {
         cleanedSvg = cleanedSvg.replace('<svg', '<svg viewBox="0 0 400 250"');
       }
@@ -41,7 +38,6 @@ export const renderMathContent = (text: any, colorCoding: boolean = true) => {
       `;
     });
 
-    // Apply color coding to mathematical symbols only outside of HTML tags
     if (colorCoding) {
       processed = processed.replace(/(<[^>]+>)|([\+\-×÷=><])/gi, (match, tag, symbol) => {
         if (tag) return tag;
@@ -52,7 +48,6 @@ export const renderMathContent = (text: any, colorCoding: boolean = true) => {
     return <span className="inline-block w-full align-middle" dangerouslySetInnerHTML={{ __html: processed }} />;
   }
 
-  // Basic text math rendering
   if (colorCoding) {
     processed = processed.replace(/([\+\-×÷=><])/gi, (symbol) => {
       return `<span class="text-rose-600 font-black mx-1 inline-block">${symbol}</span>`;
@@ -114,6 +109,8 @@ const StepContent: React.FC<{ text: string }> = ({ text }) => {
 
 const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
   const [visibleCanvas, setVisibleCanvas] = useState<Record<string, boolean>>({});
+  // 紀錄每個例題目前顯示到第幾個步驟
+  const [activeSteps, setActiveSteps] = useState<Record<number, number>>({});
   
   const structuredConcepts = useMemo(() => {
     if (!content.concept) return [];
@@ -198,7 +195,14 @@ const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
 
               <div className="space-y-16 bg-blue-50/30 p-12 md:p-16 rounded-[4.5rem] border-4 border-white shadow-[inset_0_4px_12px_rgba(0,0,0,0.02)] relative">
                 {(ex.stepByStep || []).map((s, si) => (
-                  <div key={si} className="flex gap-10 items-start">
+                  <div 
+                    key={si} 
+                    className={`flex gap-10 items-start transition-all duration-700 ${
+                      si < (activeSteps[i] || 0) || typeof window !== 'undefined' && window.location.search.includes('print')
+                        ? 'opacity-100 translate-y-0' 
+                        : 'opacity-0 translate-y-8 h-0 overflow-hidden'
+                    }`}
+                  >
                     <span className="w-16 h-16 rounded-2xl bg-white border-4 border-blue-100 flex items-center justify-center font-black text-blue-600 shrink-0 shadow-sm text-3xl">{si+1}</span>
                     <div className="flex-1 pt-1">
                       <StepContent text={s} />
@@ -206,13 +210,25 @@ const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
                   </div>
                 ))}
                 
-                <div className="mt-16 pt-16 border-t-4 border-dashed border-blue-200 flex flex-col md:flex-row items-center gap-8">
-                  <div className="bg-emerald-500 text-white px-8 py-3 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl rotate-1">
-                    正確答案
-                  </div>
-                  <div className="text-7xl font-black text-emerald-600 tracking-tighter drop-shadow-sm">
-                    {renderMathContent(ex.answer, false)}
-                  </div>
+                {/* 互動按鈕與答案 */}
+                <div className="mt-16 pt-16 border-t-4 border-dashed border-blue-200 flex flex-col md:flex-row items-center gap-8 min-h-[120px]">
+                  { (activeSteps[i] || 0) < (ex.stepByStep || []).length ? (
+                    <button 
+                      onClick={() => setActiveSteps(prev => ({...prev, [i]: (prev[i] || 0) + 1}))}
+                      className="no-print bg-blue-600 hover:bg-blue-700 text-white px-16 py-6 rounded-[2rem] font-black text-3xl shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-4 animate-bounce"
+                    >
+                      點擊看下一步 ➜
+                    </button>
+                  ) : (
+                    <div className="flex flex-col md:flex-row items-center gap-8 animate-in zoom-in-95 duration-500">
+                      <div className="bg-emerald-500 text-white px-8 py-3 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl rotate-1">
+                        最終答案
+                      </div>
+                      <div className="text-7xl font-black text-emerald-600 tracking-tighter drop-shadow-sm">
+                        {renderMathContent(ex.answer, false)}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
