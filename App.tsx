@@ -1,9 +1,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { BookOpen, ArrowLeft, Layers, FileText, AlertCircle, RefreshCw, ChevronLeft, Menu, Wand2, Search, Key, ExternalLink } from 'lucide-react';
-// Fix: Removed AIStudio from import to avoid name collision with potentially existing global type in the environment
+import { BookOpen, ArrowLeft, Layers, FileText, AlertCircle, RefreshCw, ChevronLeft, Menu, Wand2, Search } from 'lucide-react';
 import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig } from './types.ts';
-import { fetchChapters, generateHandoutFromText, generateHomework } from './geminiService.ts';
+import { fetchChapters, generateHandoutFromText, generateHomework, isPresetAvailable } from './geminiService.ts';
 import SelectionForm from './SelectionForm.tsx';
 import ChapterSelector from './ChapterSelector.tsx';
 import ManualUnitInput from './ManualUnitInput.tsx';
@@ -11,15 +10,7 @@ import HandoutViewer from './HandoutViewer.tsx';
 import HomeworkViewer from './HomeworkViewer.tsx';
 import HomeworkConfigSection from './HomeworkConfigSection.tsx';
 
-declare global {
-  interface Window {
-    // Fix: Using readonly any to resolve "identical modifiers" and type merging conflicts with environment-provided aistudio
-    readonly aistudio: any;
-  }
-}
-
 const App: React.FC = () => {
-  const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<'welcome' | 'handout' | 'homework'>('welcome');
@@ -30,7 +21,7 @@ const App: React.FC = () => {
     year: '114',
     publisher: '康軒',
     semester: '上',
-    grade: '五年級',
+    grade: '一年級',
     difficulty: '中',
     showBopomofo: false
   });
@@ -40,45 +31,10 @@ const App: React.FC = () => {
   const [handout, setHandout] = useState<HandoutContent | null>(null);
   const [homework, setHomework] = useState<HomeworkContent | null>(null);
 
+  // 初始化載入預設目錄
   useEffect(() => {
-    const checkKey = async () => {
-      try {
-        // 優先檢查 AI Studio 橋接器
-        if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
-          const selected = await window.aistudio.hasSelectedApiKey();
-          setHasKey(selected);
-        } else {
-          // 如果不在 AI Studio 環境，檢查環境變數是否已注入金鑰
-          const isEnvKeySet = !!process.env.API_KEY && process.env.API_KEY !== '';
-          setHasKey(isEnvKeySet);
-        }
-      } catch (e) {
-        setHasKey(false);
-      }
-    };
-    checkKey();
-  }, []);
-
-  const handleSelectKey = async () => {
-    try {
-      if (window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
-        await window.aistudio.openSelectKey();
-      }
-      // 根據規範，呼叫選取後立即假設金鑰已準備好以繼續
-      setHasKey(true);
-    } catch (e) {
-      console.error("Key selection failed", e);
-    }
-  };
-
-  const handleGlobalError = (err: any) => {
-    const msg = err.message || String(err);
-    // 擷取 SDK 的金鑰缺失錯誤或權限錯誤
-    if (msg.includes("API Key must be set") || msg.includes("Requested entity was not found") || msg.includes("API_KEY_INVALID")) {
-      setHasKey(false);
-    }
-    setError(msg);
-  };
+    handleSyncChapters();
+  }, [params.grade, params.semester]);
 
   const handleSyncChapters = async () => {
     setLoading(true);
@@ -87,8 +43,7 @@ const App: React.FC = () => {
       const data = await fetchChapters(params);
       setChapters(data);
     } catch (e: any) {
-      handleGlobalError(e);
-      setError(`[目錄獲取失敗] ${e.message}`);
+      setError(`[目錄載入失敗] ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -98,14 +53,18 @@ const App: React.FC = () => {
     setCurrentChapter({ title: chapter, sub });
     setShowSettings(false);
     setError(null);
-    setLoading(true);
+    
+    // 如果是內建講義，則不需要顯示載入動畫（秒開）
+    const isPreset = isPresetAvailable(params, chapter, sub);
+    if (!isPreset) {
+      setLoading(true);
+    }
     
     try {
       const data = await generateHandoutFromText(params, chapter, sub);
       setHandout(data);
       setView('handout');
     } catch (err: any) {
-      handleGlobalError(err);
       setError(`[講義生成失敗] ${err.message}`);
     } finally {
       setLoading(false);
@@ -121,50 +80,16 @@ const App: React.FC = () => {
       setHomework(data);
       setView('homework');
     } catch (err: any) {
-      handleGlobalError(err);
       setError(`[練習卷製作失敗] ${err.message}`);
     } finally {
       setLoading(false);
     }
   }, [params, currentChapter]);
 
-  if (hasKey === false) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-white text-center">
-        <div className="max-w-md w-full bg-slate-800 p-12 rounded-[3.5rem] border border-slate-700 shadow-2xl animate-in zoom-in-95 duration-500">
-          <div className="w-24 h-24 bg-blue-600 rounded-3xl mx-auto flex items-center justify-center mb-10 shadow-xl shadow-blue-500/20">
-            <Key size={48} className="animate-pulse" />
-          </div>
-          <h1 className="text-4xl font-black mb-6 italic tracking-tighter">啟動教學助理</h1>
-          <p className="text-slate-400 font-bold mb-10 leading-relaxed px-4">
-            本系統使用付費版 Gemini 3 模型。請先透過您的 Google 專案選取 API 金鑰以進行教學講義生成。
-          </p>
-          <button 
-            onClick={handleSelectKey}
-            className="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-[2rem] font-black text-xl transition-all shadow-xl active:scale-95 flex items-center justify-center gap-3 group"
-          >
-            <ExternalLink size={24} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" /> 
-            點此選取 API 金鑰
-          </button>
-          <div className="mt-8">
-            <a 
-              href="https://ai.google.dev/gemini-api/docs/billing" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-slate-500 text-xs hover:text-blue-400 transition-colors underline underline-offset-4"
-            >
-              瞭解 Google Cloud 計費與 API 授權方式
-            </a>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen flex bg-slate-50 font-sans selection:bg-blue-100">
       {!isSidebarCollapsed && (
-        <aside className="w-96 bg-white p-6 border-r flex flex-col h-screen shrink-0 overflow-y-auto shadow-2xl z-50">
+        <aside className="w-96 bg-white p-6 border-r flex flex-col h-screen shrink-0 overflow-y-auto shadow-2xl z-50 no-print">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-3 text-blue-600">
               <BookOpen size={32} strokeWidth={3} />
@@ -178,9 +103,6 @@ const App: React.FC = () => {
           {showSettings ? (
             <div className="space-y-6">
               <SelectionForm params={params} onChange={setParams} isLoading={loading} />
-              <button onClick={handleSyncChapters} disabled={loading} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
-                <Search size={20} /> 同步課程目錄
-              </button>
               <ChapterSelector chapters={chapters} onSelect={handleSelectUnit} isLoading={loading} />
               <ManualUnitInput onGenerate={handleSelectUnit} isLoading={loading} />
             </div>
@@ -212,8 +134,8 @@ const App: React.FC = () => {
         {loading && (
           <div className="h-full flex flex-col items-center justify-center text-center">
             <div className="w-20 h-20 border-8 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-8"></div>
-            <h2 className="text-4xl font-black text-slate-900 mb-2 italic">AI 正在計算並撰寫講義...</h2>
-            <p className="text-slate-400 font-bold italic">這可能需要 10-15 秒鐘的時間</p>
+            <h2 className="text-4xl font-black text-slate-900 mb-2 italic">正在處理教學內容...</h2>
+            <p className="text-slate-400 font-bold italic">初次生成可能需要較長時間</p>
           </div>
         )}
 
@@ -221,15 +143,13 @@ const App: React.FC = () => {
           <div className="h-full flex flex-col items-center justify-center max-w-2xl mx-auto">
             <div className="bg-white p-12 rounded-[4rem] border-4 border-rose-100 shadow-2xl text-center w-full">
               <AlertCircle size={80} className="text-rose-500 mx-auto mb-8" />
-              <h2 className="text-4xl font-black text-slate-900 mb-4">執行時發生錯誤</h2>
+              <h2 className="text-4xl font-black text-slate-900 mb-4">操作提示</h2>
               <div className="bg-rose-50 p-6 rounded-3xl text-rose-700 font-mono text-sm mb-10 text-left overflow-auto max-h-40 leading-relaxed">
                 {error}
               </div>
-              <div className="flex flex-wrap gap-4 justify-center">
-                <button onClick={() => window.location.reload()} className="bg-slate-900 text-white px-10 py-5 rounded-[2rem] font-black flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl">
-                  <RefreshCw size={24} /> 重新整理網頁
-                </button>
-              </div>
+              <button onClick={() => setError(null)} className="bg-slate-900 text-white px-10 py-5 rounded-[2rem] font-black flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl">
+                返回
+              </button>
             </div>
           </div>
         )}
@@ -239,9 +159,9 @@ const App: React.FC = () => {
             <div className="w-40 h-40 bg-white rounded-[3.5rem] flex items-center justify-center text-blue-600 shadow-2xl mb-12 border-8 border-blue-50">
               <Wand2 size={80} strokeWidth={2.5} />
             </div>
-            <h2 className="text-6xl font-black text-slate-900 mb-6 italic tracking-tighter">選取單元開始上課</h2>
+            <h2 className="text-6xl font-black text-slate-900 mb-6 italic tracking-tighter">歡迎使用特教數學助手</h2>
             <p className="text-slate-400 font-bold text-2xl max-w-xl leading-relaxed">
-              點擊左側單元目錄，AI 將為您生成適合學生的「微步化」教學講義。
+              請從左側選單選擇年級與單元，系統將自動載入內建講義或為您生成新內容。
             </p>
           </div>
         )}
@@ -262,4 +182,5 @@ const App: React.FC = () => {
     </div>
   );
 };
+
 export default App;

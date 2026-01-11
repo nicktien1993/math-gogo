@@ -1,8 +1,9 @@
 
 import { Publisher, Grade, Semester, Chapter } from './types.ts';
 
+// Fix: Make Publisher keys optional to avoid errors when not all publishers have curriculum data defined
 type CurriculumDB = {
-  [key in Publisher]: {
+  [key in Publisher]?: {
     [key in Grade]: {
       [key in Semester]: Chapter[];
     };

@@ -31,12 +31,6 @@ const robustExtractJSON = (text: string) => {
   }
 };
 
-const validateApiKey = () => {
-  if (!process.env.API_KEY) {
-    throw new Error("API Key must be set. Please authorize the teaching assistant.");
-  }
-};
-
 const SYSTEM_PROMPT = `你是一位專業的台灣國小資源班特教老師。你的目標是為學生生成「微步化（小步子）」教材。嚴禁使用 $ 符號。圖解使用 SVG。`;
 
 const HANDOUT_SCHEMA = {
@@ -64,12 +58,20 @@ const HANDOUT_SCHEMA = {
   required: ["title", "concept", "examples", "tips", "checklist"]
 };
 
+export const isPresetAvailable = (params: SelectionParams, chapter: string, sub: string): boolean => {
+  const presetKey = `${params.publisher}-${params.grade}-${params.semester}-${chapter}-${sub}`;
+  return !!PRESET_HANDOUTS[presetKey];
+};
+
 export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]> => {
+  // 優先回傳本地資料庫
   const local = getLocalChapters(params.publisher, params.grade, params.semester);
   if (local.length > 0) return local;
 
-  validateApiKey();
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+  // 若無本地資料，才嘗試呼叫 AI (但本 App 設定為康軒版全內建，理論上不會走到這裡)
+  if (!process.env.API_KEY) return [];
+  
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -88,8 +90,11 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
     return PRESET_HANDOUTS[presetKey];
   }
 
-  validateApiKey();
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+  if (!process.env.API_KEY) {
+    throw new Error("找不到 API 金鑰。此單元尚無內建講義，請先設定 API 以進行 AI 生成。");
+  }
+
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
@@ -109,15 +114,23 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
 };
 
 export const generateHomework = async (params: SelectionParams, chapter: string, sub: string, config: HomeworkConfig): Promise<HomeworkContent> => {
-  validateApiKey();
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+  if (!process.env.API_KEY) {
+    throw new Error("找不到 API 金鑰，無法製作隨堂練習卷。");
+  }
+
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: `製作「${chapter}-${sub}」練習卷。計算題 ${config.calculationCount} 題，應用題 ${config.wordProblemCount} 題。`,
-      config: { systemInstruction: SYSTEM_PROMPT, responseMimeType: "application/json" }
+      config: { 
+        systemInstruction: SYSTEM_PROMPT, 
+        responseMimeType: "application/json" 
+      }
     });
-    return robustExtractJSON(response.text);
+    const data = robustExtractJSON(response.text);
+    if (!data) throw new Error("練習卷生成失敗");
+    return data;
   } catch (e: any) {
     throw new Error(e.message || "生成練習卷時發生錯誤");
   }

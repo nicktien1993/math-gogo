@@ -1,5 +1,5 @@
 
-// Fix: Expanded Publisher type to include more common Taiwanese textbook publishers to match component usage
+// Fix: Expand Publisher type to include more textbook publishers
 export type Publisher = '康軒' | '南一' | '翰林';
 export type Semester = '上' | '下';
 export type Grade = '一年級' | '二年級' | '三年級' | '四年級' | '五年級' | '六年級';
@@ -57,9 +57,4 @@ export interface HomeworkContent {
     visualAidSvg?: string;
   }>;
   checklist: string[]; 
-}
-
-export interface AIStudio {
-  hasSelectedApiKey: () => Promise<boolean>;
-  openSelectKey: () => Promise<void>;
 }

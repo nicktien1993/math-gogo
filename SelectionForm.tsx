@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { SelectionParams, Publisher, Grade, Semester, Difficulty } from './types.ts';
+import { SelectionParams, Grade, Semester, Difficulty } from './types.ts';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Props {
@@ -14,7 +14,6 @@ const SelectionForm: React.FC<Props> = ({ onChange, isLoading, params }) => {
     onChange({ ...params, [key]: value });
   };
 
-  const publishers: Publisher[] = ['康軒']; // 只保留康軒
   const grades: Grade[] = ['一年級', '二年級', '三年級', '四年級', '五年級', '六年級'];
   const semesters: Semester[] = ['上', '下'];
   const difficulties: Difficulty[] = ['易', '中', '難'];
@@ -50,7 +49,7 @@ const SelectionForm: React.FC<Props> = ({ onChange, isLoading, params }) => {
     <div className="bg-slate-50/50 p-6 rounded-[2.5rem] border border-slate-200/60 shadow-inner">
       <h2 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-3">
         <span className="w-8 h-8 bg-blue-600 text-white rounded-xl flex items-center justify-center text-sm shadow-md">1</span>
-        課程設定
+        課程設定 (康軒版)
       </h2>
       
       <div className="mb-8">
@@ -80,15 +79,7 @@ const SelectionForm: React.FC<Props> = ({ onChange, isLoading, params }) => {
       </div>
 
       <ButtonGroup 
-        label="出版商版本 (僅限康軒)" 
-        options={publishers} 
-        current={params.publisher} 
-        onSelect={(v: Publisher) => handleChange('publisher', v)} 
-        columns={1}
-      />
-
-      <ButtonGroup 
-        label="年級" 
+        label="年級選取" 
         options={grades} 
         current={params.grade} 
         onSelect={(v: Grade) => handleChange('grade', v)} 
@@ -104,7 +95,7 @@ const SelectionForm: React.FC<Props> = ({ onChange, isLoading, params }) => {
           columns={2}
         />
         <ButtonGroup 
-          label="教材難度" 
+          label="難度" 
           options={difficulties} 
           current={params.difficulty} 
           onSelect={(v: Difficulty) => handleChange('difficulty', v)} 
@@ -113,14 +104,9 @@ const SelectionForm: React.FC<Props> = ({ onChange, isLoading, params }) => {
       </div>
 
       {isLoading && (
-        <div className="flex flex-col items-center justify-center gap-3 pt-6 border-t border-slate-200 mt-6 animate-in fade-in slide-in-from-top-4">
-          <div className="flex gap-2">
-            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-            <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
-          </div>
+        <div className="flex flex-col items-center justify-center gap-3 pt-6 border-t border-slate-200 mt-6 animate-pulse">
           <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">
-            正在載入內建課程資料...
+            正在載入內建資料...
           </span>
         </div>
       )}
