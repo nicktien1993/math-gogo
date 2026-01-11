@@ -68,10 +68,11 @@ export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]>
   const local = getLocalChapters(params.publisher, params.grade, params.semester);
   if (local.length > 0) return local;
 
-  // 若無本地資料，才嘗試呼叫 AI (但本 App 設定為康軒版全內建，理論上不會走到這裡)
-  if (!process.env.API_KEY) return [];
+  // 若無本地資料，才嘗試呼叫 AI
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) return [];
   
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -90,11 +91,12 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
     return PRESET_HANDOUTS[presetKey];
   }
 
-  if (!process.env.API_KEY) {
-    throw new Error("找不到 API 金鑰。此單元尚無內建講義，請先設定 API 以進行 AI 生成。");
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("此單元暫無內建講義且未設定 API 金鑰。請更換有內建資料的單元（如：五年級上學期-找出因數）。");
   }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
@@ -114,11 +116,12 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
 };
 
 export const generateHomework = async (params: SelectionParams, chapter: string, sub: string, config: HomeworkConfig): Promise<HomeworkContent> => {
-  if (!process.env.API_KEY) {
-    throw new Error("找不到 API 金鑰，無法製作隨堂練習卷。");
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("目前暫無內建練習卷，且未設定 API 金鑰進行 AI 生成。");
   }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',

@@ -1,5 +1,5 @@
 
-// Fix: Expand Publisher type to include more textbook publishers
+// Fix: Expanded Publisher type to support all intended textbook versions
 export type Publisher = '康軒' | '南一' | '翰林';
 export type Semester = '上' | '下';
 export type Grade = '一年級' | '二年級' | '三年級' | '四年級' | '五年級' | '六年級';
