@@ -46,8 +46,8 @@ const App: React.FC = () => {
       const data = await fetchChapters(params);
       setChapters(data);
     } catch (e: any) {
-      console.error("目錄讀取嚴重錯誤:", e);
-      setError(`系統訊息：${e.message || "未知錯誤"}`);
+      console.error("Chapters Load Error:", e);
+      setError(`系統訊息：${e.message || "無法連線至目錄服務"}`);
     } finally {
       setLoading(false);
     }
@@ -55,7 +55,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     loadChapters();
-  }, [params.publisher, params.grade, params.semester, loadChapters]);
+  }, [params.publisher, params.grade, params.semester]);
 
   useEffect(() => {
     let interval: number;
@@ -80,7 +80,7 @@ const App: React.FC = () => {
       if (currentChapter?.sub !== sub) setHomework(null);
       setView('handout');
     } catch (err: any) {
-      setError(`生成失敗：${err.message || "AI 服務器連線中斷"}`);
+      setError(`生成失敗原因：${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -108,7 +108,7 @@ const App: React.FC = () => {
       setHomework(data);
       setView('homework');
     } catch (err: any) {
-      setError(`練習卷生成出錯：${err.message}`);
+      setError(`練習卷生成報錯：${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -195,23 +195,25 @@ const App: React.FC = () => {
                <div className="absolute inset-0 w-28 h-28 border-[10px] border-blue-600 border-t-transparent rounded-full animate-spin"></div>
             </div>
             <h2 className="text-4xl font-black text-slate-800 italic tracking-tighter mb-4">{LOADING_MESSAGES[loadingMsgIdx]}</h2>
-            <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-sm">正在同步教學資料...</p>
           </div>
         )}
 
         {error && !loading && (
-          <div className="h-full flex flex-col items-center justify-center max-w-lg mx-auto">
+          <div className="h-full flex flex-col items-center justify-center max-w-xl mx-auto">
             <div className="bg-white p-12 rounded-[4rem] border-4 border-rose-100 shadow-2xl text-center w-full relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-3 bg-rose-500"></div>
               <AlertCircle size={80} className="text-rose-500 mx-auto mb-8" />
-              <h3 className="text-3xl font-black text-slate-900 mb-4">發現問題</h3>
-              <p className="text-slate-500 font-bold mb-12 leading-relaxed text-lg bg-slate-50 p-4 rounded-2xl border border-slate-100">{error}</p>
+              <h3 className="text-3xl font-black text-slate-900 mb-4">發現 API 問題</h3>
+              <p className="text-rose-600 font-bold mb-4 text-sm uppercase tracking-widest">診斷訊息：</p>
+              <div className="text-slate-500 font-bold mb-12 leading-relaxed text-lg bg-slate-50 p-6 rounded-3xl border border-slate-100 break-all">
+                {error}
+              </div>
               <div className="flex flex-col gap-4">
                 <button onClick={handleRetry} className="bg-rose-500 text-white p-6 rounded-[2rem] font-black text-2xl shadow-xl active:scale-95 transition-all flex items-center justify-center gap-4">
-                  <RefreshCw size={28} /> 再次重試
+                  <RefreshCw size={28} /> 立即重新請求
                 </button>
                 <button onClick={() => { setShowSettings(true); setError(null); setView('welcome'); }} className="text-slate-400 font-black hover:text-slate-600 text-lg py-2">
-                  回目錄直接使用在地課程
+                  回目錄使用在地課程
                 </button>
               </div>
             </div>
@@ -230,14 +232,6 @@ const App: React.FC = () => {
             <p className="text-slate-400 font-bold text-2xl mb-16 max-w-lg leading-relaxed">
               點擊左側目錄選取章節，AI 老師將立即為您設計專業的資源班講義。
             </p>
-            {isSidebarCollapsed && (
-              <button 
-                onClick={() => setIsSidebarCollapsed(false)}
-                className="bg-blue-600 text-white px-16 py-8 rounded-[2.5rem] font-black text-3xl shadow-2xl hover:bg-blue-700 active:scale-95 flex items-center gap-6"
-              >
-                <Menu size={32} /> 開啟章節清單
-              </button>
-            )}
           </div>
         )}
 
