@@ -2,7 +2,7 @@
 import { Publisher, Grade, Semester, Chapter } from './types.ts';
 
 type CurriculumDB = {
-  [key in Publisher]: {
+  [key in Publisher]?: {
     [key in Grade]: {
       [key in Semester]: Chapter[];
     };

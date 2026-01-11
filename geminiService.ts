@@ -72,7 +72,7 @@ export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]>
   const apiKey = process.env.API_KEY;
   if (!apiKey) return [];
   
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: apiKey as string });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -96,7 +96,7 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
     throw new Error("此單元暫無內建講義且未設定 API 金鑰。請更換有內建資料的單元（如：五年級上學期-找出因數）。");
   }
 
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: apiKey as string });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
@@ -121,7 +121,7 @@ export const generateHomework = async (params: SelectionParams, chapter: string,
     throw new Error("目前暫無內建練習卷，且未設定 API 金鑰進行 AI 生成。");
   }
 
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: apiKey as string });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
