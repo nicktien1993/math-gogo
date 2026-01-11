@@ -96,74 +96,9 @@ export const CURRICULUM_DATA: CurriculumDB = {
         { id: 'k6d4', title: '4. 統計圖表', subChapters: ['圓形圖', '折線圖'] }
       ]
     }
-  },
-  '南一': {
-    '一年級': {
-      '上': [
-        { id: 'n1u1', title: '1. 數數看', subChapters: ['10以內的數', '0的意義'] },
-        { id: 'n1u2', title: '2. 長短比較', subChapters: ['直接比較', '間接比較'] },
-        { id: 'n1u3', title: '3. 10以內加法', subChapters: ['合起來', '加法算式'] }
-      ],
-      '下': [
-        { id: 'n1d1', title: '1. 10以內減法', subChapters: ['減法', '剩下來'] },
-        { id: 'n1d2', title: '2. 錢幣', subChapters: ['1元5元10元', '付錢'] }
-      ]
-    },
-    '二年級': { '上': [], '下': [] },
-    '三年級': { '上': [], '下': [] },
-    '四年級': {
-      '上': [
-        { id: 'n4u1', title: '1. 大數的認識', subChapters: ['五位以上的數', '大數的加減'] },
-        { id: 'n4u2', title: '2. 乘法與除法', subChapters: ['多位數乘法', '除以二位數'] }
-      ],
-      '下': [
-        { id: 'n4d1', title: '1. 分數', subChapters: ['分數的加減', '分數的大小'] }
-      ]
-    },
-    '五年級': { '上': [], '下': [] },
-    '六年級': {
-      '上': [
-        { id: 'n6u1', title: '1. 質因數分解', subChapters: ['質數', '質因數'] },
-        { id: 'n6u2', title: '2. 圓的計算', subChapters: ['圓周長', '圓面積'] }
-      ],
-      '下': []
-    }
-  },
-  '翰林': {
-    '一年級': { '上': [], '下': [] },
-    '二年級': { '上': [], '下': [] },
-    '三年級': { '上': [], '下': [] },
-    '四年級': {
-      '上': [
-        { id: 'h4u1', title: '1. 億以內的數', subChapters: ['讀數與寫數', '數的大小比較'] },
-        { id: 'h4u2', title: '2. 角度', subChapters: ['角度的大小', '畫角'] }
-      ],
-      '下': []
-    },
-    '五年級': { '上': [], '下': [] },
-    '六年級': {
-      '上': [
-        { id: 'h6u1', title: '1. 分數除法', subChapters: ['分數除以分數'] },
-        { id: 'h6u2', title: '2. 比與比例', subChapters: ['比值', '比例'] }
-      ],
-      '下': []
-    }
   }
 };
 
 export const getLocalChapters = (publisher: Publisher, grade: Grade, semester: Semester): Chapter[] => {
-  const data = CURRICULUM_DATA[publisher]?.[grade]?.[semester];
-  if (data && data.length > 0) return data;
-  
-  const fallbackData = CURRICULUM_DATA['康軒']?.[grade]?.[semester];
-  if (fallbackData && fallbackData.length > 0) return fallbackData;
-
-  return [
-    { id: 'f1', title: '1. 整數與計算', subChapters: ['三位數加減', '進位加法', '退位減法'] },
-    { id: 'f2', title: '2. 乘除法初步', subChapters: ['九九乘法', '除法基礎'] },
-    { id: 'f3', title: '3. 形狀與空間', subChapters: ['認識平面圖形', '認識立體圖形'] },
-    { id: 'f4', title: '4. 分數與小數', subChapters: ['幾分之一', '一位小數'] },
-    { id: 'f5', title: '5. 時間與量測', subChapters: ['認識時鐘', '長度測量'] },
-    { id: 'f6', title: '6. 應用問題', subChapters: ['兩步驟加減', '乘加應用題'] }
-  ];
+  return CURRICULUM_DATA[publisher]?.[grade]?.[semester] || [];
 };

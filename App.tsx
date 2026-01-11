@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { BookOpen, ArrowLeft, Layers, FileText, AlertCircle, RefreshCw, ChevronLeft, Menu, Wand2, Search, Key, ExternalLink } from 'lucide-react';
-// Updated import to use renamed AIStudio interface
-import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig, AIStudio } from './types.ts';
+// Fix: Removed AIStudio from import to avoid name collision with potentially existing global type in the environment
+import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig } from './types.ts';
 import { fetchChapters, generateHandoutFromText, generateHomework } from './geminiService.ts';
 import SelectionForm from './SelectionForm.tsx';
 import ChapterSelector from './ChapterSelector.tsx';
@@ -13,8 +13,8 @@ import HomeworkConfigSection from './HomeworkConfigSection.tsx';
 
 declare global {
   interface Window {
-    // Fixed type declaration to match the expected AIStudio type from the environment and resolved any modifier conflicts
-    aistudio: AIStudio;
+    // Fix: Using readonly any to resolve "identical modifiers" and type merging conflicts with environment-provided aistudio
+    readonly aistudio: any;
   }
 }
 

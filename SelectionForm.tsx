@@ -14,7 +14,7 @@ const SelectionForm: React.FC<Props> = ({ onChange, isLoading, params }) => {
     onChange({ ...params, [key]: value });
   };
 
-  const publishers: Publisher[] = ['康軒', '南一', '翰林'];
+  const publishers: Publisher[] = ['康軒']; // 只保留康軒
   const grades: Grade[] = ['一年級', '二年級', '三年級', '四年級', '五年級', '六年級'];
   const semesters: Semester[] = ['上', '下'];
   const difficulties: Difficulty[] = ['易', '中', '難'];
@@ -53,7 +53,6 @@ const SelectionForm: React.FC<Props> = ({ onChange, isLoading, params }) => {
         課程設定
       </h2>
       
-      {/* 數位學年度調整器 */}
       <div className="mb-8">
         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">
           學年度設定
@@ -81,10 +80,11 @@ const SelectionForm: React.FC<Props> = ({ onChange, isLoading, params }) => {
       </div>
 
       <ButtonGroup 
-        label="出版商版本" 
+        label="出版商版本 (僅限康軒)" 
         options={publishers} 
         current={params.publisher} 
         onSelect={(v: Publisher) => handleChange('publisher', v)} 
+        columns={1}
       />
 
       <ButtonGroup 
@@ -120,7 +120,7 @@ const SelectionForm: React.FC<Props> = ({ onChange, isLoading, params }) => {
             <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
           </div>
           <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">
-            正在同步最新課程資料...
+            正在載入內建課程資料...
           </span>
         </div>
       )}

@@ -1,4 +1,5 @@
 
+// Fix: Expanded Publisher type to include more common Taiwanese textbook publishers to match component usage
 export type Publisher = '康軒' | '南一' | '翰林';
 export type Semester = '上' | '下';
 export type Grade = '一年級' | '二年級' | '三年級' | '四年級' | '五年級' | '六年級';
@@ -31,7 +32,6 @@ export interface HandoutContent {
     answer: string;
     visualAidSvg?: string;
   }>;
-  // Added exercises property to match preset data and component usage
   exercises?: Array<{
     question: string;
     answer: string;
@@ -59,7 +59,6 @@ export interface HomeworkContent {
   checklist: string[]; 
 }
 
-// Renamed AIStudioProvider to AIStudio to resolve global type conflicts
 export interface AIStudio {
   hasSelectedApiKey: () => Promise<boolean>;
   openSelectKey: () => Promise<void>;
