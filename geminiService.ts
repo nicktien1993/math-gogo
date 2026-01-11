@@ -3,6 +3,17 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { SelectionParams, Chapter, HandoutContent, HomeworkConfig, HomeworkContent } from './types.ts';
 import { getLocalChapters } from './curriculumData.ts';
 
+/**
+ * 安全地取得 API Key，防止 process 未定義導致的崩潰
+ */
+const getApiKey = () => {
+  try {
+    return process.env.API_KEY || "";
+  } catch (e) {
+    return "";
+  }
+};
+
 const SYSTEM_INSTRUCTION = `你是一位專業的台灣國小資源班特教老師。你的任務是生成一份「微步化」教材。
 
 核心規範：
@@ -11,21 +22,13 @@ const SYSTEM_INSTRUCTION = `你是一位專業的台灣國小資源班特教老�
 3. 核心觀念 (concept) 必須拆解為短句，並用「重點一：...」開頭。
 4. 練習卷 (Homework) 必須包含題目與老師提示，但「嚴禁」在練習卷內容中出現答案。`;
 
-/**
- * 徹底解決 "Unexpected non-whitespace character after JSON" 錯誤
- * 透過正則表達式精確擷取 JSON 區塊
- */
 const cleanAndParse = (text: any) => {
   if (!text) return null;
   let raw = typeof text === 'string' ? text : String(text);
-  
-  // 1. 移除 Markdown 標記
   let cleaned = raw.replace(/```json/gi, '').replace(/```/gi, '').trim();
 
-  // 2. 尋找 JSON 邊界 (處理物件 {} 或 陣列 [])
   const firstBrace = cleaned.indexOf('{');
   const firstBracket = cleaned.indexOf('[');
-  
   let startIdx = -1;
   let endChar = '';
 
@@ -40,7 +43,6 @@ const cleanAndParse = (text: any) => {
   if (startIdx !== -1) {
     const endIdx = cleaned.lastIndexOf(endChar);
     if (endIdx !== -1) {
-      // 關鍵修復：強制只保留括號內的字串，丟棄所有尾隨的廢話
       cleaned = cleaned.substring(startIdx, endIdx + 1);
     }
   }
@@ -48,7 +50,6 @@ const cleanAndParse = (text: any) => {
   try {
     return JSON.parse(cleaned);
   } catch (e) {
-    console.error("JSON Parsing Error:", e, "Data chunk:", cleaned);
     return null;
   }
 };
@@ -90,87 +91,69 @@ const HANDOUT_SCHEMA = {
   required: ["title", "concept", "examples"]
 };
 
-const HOMEWORK_SCHEMA = {
-  type: Type.OBJECT,
-  properties: {
-    title: { type: Type.STRING },
-    questions: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          type: { type: Type.STRING },
-          content: { type: Type.STRING },
-          hint: { type: Type.STRING },
-          answer: { type: Type.STRING },
-          visualAidSvg: { type: Type.STRING }
-        },
-        required: ["content", "answer"]
-      }
-    },
-    checklist: { type: Type.ARRAY, items: { type: Type.STRING } }
-  },
-  required: ["title", "questions"]
-};
-
 export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]> => {
-  const cacheKey = `MATH_FINAL_V18_${params.publisher}_${params.grade}_${params.semester}`;
+  const cacheKey = `MATH_STABLE_V22_${params.publisher}_${params.grade}_${params.semester}`;
   const cached = localStorage.getItem(cacheKey);
   if (cached) return JSON.parse(cached);
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `列出台灣國小數學「${params.publisher}版」${params.grade}${params.semester}目錄 JSON 陣列。`,
-      config: { 
-        responseMimeType: "application/json",
-        responseSchema: CHAPTER_LIST_SCHEMA
+  const apiKey = getApiKey();
+  if (apiKey) {
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `列出台灣國小數學「${params.publisher}版」${params.grade}${params.semester}目錄 JSON。`,
+        config: { 
+          responseMimeType: "application/json",
+          responseSchema: CHAPTER_LIST_SCHEMA
+        }
+      });
+      const data = cleanAndParse(response.text);
+      if (data && Array.isArray(data)) {
+        localStorage.setItem(cacheKey, JSON.stringify(data));
+        return data;
       }
-    });
-    const data = cleanAndParse(response.text);
-    if (data && Array.isArray(data)) {
-      localStorage.setItem(cacheKey, JSON.stringify(data));
-      return data;
+    } catch (e) {
+      console.warn("API 獲取失敗，切換至在地資料庫庫。");
     }
-  } catch (e) { console.error("API Error Fetching Chapters:", e); }
+  }
+  
   return getLocalChapters(params.publisher, params.grade, params.semester);
 };
 
 export const generateHandoutFromText = async (params: SelectionParams, chapter: string, sub: string): Promise<HandoutContent> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `為資源班學生生成「${chapter} - ${sub}」特教微步化講義。`,
-      config: { 
-        systemInstruction: SYSTEM_INSTRUCTION, 
-        responseMimeType: "application/json", 
-        responseSchema: HANDOUT_SCHEMA 
-      }
-    });
-    const data = cleanAndParse(response.text);
-    if (data) return data;
-  } catch (e) { throw e; }
-  throw new Error("講義內容解析失敗，請重新生成。");
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error("API 金鑰未配置");
+  
+  const ai = new GoogleGenAI({ apiKey });
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `為資源班學生生成「${chapter} - ${sub}」特教講義。`,
+    config: { 
+      systemInstruction: SYSTEM_INSTRUCTION, 
+      responseMimeType: "application/json", 
+      responseSchema: HANDOUT_SCHEMA 
+    }
+  });
+  const data = cleanAndParse(response.text);
+  if (data) return data;
+  throw new Error("講義解析失敗");
 };
 
 export const generateHomework = async (params: SelectionParams, chapter: string, sub: string, config: HomeworkConfig): Promise<HomeworkContent> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-  const prompt = `生成「${chapter}-${sub}」練習卷。計算:${config.calculationCount}題，應用:${config.wordProblemCount}題。`;
-  
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: { 
-        systemInstruction: SYSTEM_INSTRUCTION, 
-        responseMimeType: "application/json",
-        responseSchema: HOMEWORK_SCHEMA
-      }
-    });
-    const data = cleanAndParse(response.text);
-    if (data) return data;
-  } catch (e) { throw e; }
-  throw new Error("練習卷內容解析失敗，請重新生成。");
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error("API 金鑰未配置");
+
+  const ai = new GoogleGenAI({ apiKey });
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `生成「${chapter}-${sub}」練習題。計算:${config.calculationCount}，應用:${config.wordProblemCount}。`,
+    config: { 
+      systemInstruction: SYSTEM_INSTRUCTION, 
+      responseMimeType: "application/json"
+    }
+  });
+  const data = cleanAndParse(response.text);
+  if (data) return data;
+  throw new Error("練習卷解析失敗");
 };

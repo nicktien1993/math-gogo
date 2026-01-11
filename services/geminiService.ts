@@ -13,16 +13,14 @@ const SYSTEM_INSTRUCTION = `你是一位專業的台灣國小資源班特教老�
 
 /**
  * 徹底解決 "Unexpected non-whitespace character after JSON" 錯誤
- * 透過正則表達式精確擷取 JSON 區塊，忽略 AI 在 JSON 之外產生的任何文字。
+ * 透過擷取第一個 { 或 [ 到最後一個 } 或 ] 之間的內容，過濾掉 AI 的多餘解釋。
  */
 const cleanAndParse = (text: any) => {
   if (!text) return null;
   let raw = typeof text === 'string' ? text : String(text);
   
-  // 1. 移除 Markdown 程式碼區塊標記
   let cleaned = raw.replace(/```json/gi, '').replace(/```/gi, '').trim();
 
-  // 2. 尋找 JSON 邊界 (處理物件 {} 或 陣列 [])
   const firstBrace = cleaned.indexOf('{');
   const firstBracket = cleaned.indexOf('[');
   
@@ -40,7 +38,6 @@ const cleanAndParse = (text: any) => {
   if (startIdx !== -1) {
     const endIdx = cleaned.lastIndexOf(endChar);
     if (endIdx !== -1) {
-      // 關鍵修復：強制只保留第一個括號到最後一個括號之間的字串
       cleaned = cleaned.substring(startIdx, endIdx + 1);
     }
   }
@@ -48,7 +45,7 @@ const cleanAndParse = (text: any) => {
   try {
     return JSON.parse(cleaned);
   } catch (e) {
-    console.error("JSON 解析錯誤:", e, "處理後的字串內容:", cleaned);
+    console.error("JSON 解析失敗:", e, "處理後的字串:", cleaned);
     return null;
   }
 };
@@ -114,7 +111,7 @@ const HOMEWORK_SCHEMA = {
 };
 
 export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]> => {
-  const cacheKey = `MATH_CACHE_V19_${params.publisher}_${params.grade}_${params.semester}`;
+  const cacheKey = `MATH_FINAL_STABLE_V20_${params.publisher}_${params.grade}_${params.semester}`;
   const cached = localStorage.getItem(cacheKey);
   if (cached) return JSON.parse(cached);
 
@@ -144,7 +141,7 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `為國小資源班學生生成「${chapter} - ${sub}」微步化講義 JSON。`,
+      contents: `為資源班學生生成「${chapter} - ${sub}」特教微步化講義。`,
       config: { 
         systemInstruction: SYSTEM_INSTRUCTION, 
         responseMimeType: "application/json", 
@@ -153,16 +150,13 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
     });
     const data = cleanAndParse(response.text);
     if (data) return data;
-  } catch (e) {
-    console.error("生成講義失敗:", e);
-    throw e;
-  }
-  throw new Error("講義內容格式解析錯誤。");
+  } catch (e) { throw e; }
+  throw new Error("講義格式解析錯誤，請重試。");
 };
 
 export const generateHomework = async (params: SelectionParams, chapter: string, sub: string, config: HomeworkConfig): Promise<HomeworkContent> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-  const prompt = `生成「${chapter}-${sub}」練習卷 JSON。包含計算題:${config.calculationCount} 題，應用題:${config.wordProblemCount} 題。`;
+  const prompt = `生成「${chapter}-${sub}」練習卷。計算:${config.calculationCount}題，應用:${config.wordProblemCount}題。`;
   
   try {
     const response = await ai.models.generateContent({
@@ -176,9 +170,6 @@ export const generateHomework = async (params: SelectionParams, chapter: string,
     });
     const data = cleanAndParse(response.text);
     if (data) return data;
-  } catch (e) {
-    console.error("生成練習卷失敗:", e);
-    throw e;
-  }
-  throw new Error("練習卷內容格式解析錯誤。");
+  } catch (e) { throw e; }
+  throw new Error("練習卷解析錯誤，請重試。");
 };

@@ -1,8 +1,8 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { BookOpen, ArrowLeft, LayoutDashboard, Settings, Layers, FileText, AlertCircle, RefreshCw, ChevronLeft, Menu, History, Clock, Sparkles, Wand2 } from 'lucide-react';
-import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig, HistoryItem } from './types.ts';
-import { fetchChapters, generateHandoutFromText, generateHomework } from './services/geminiService.ts';
+import { BookOpen, ArrowLeft, Layers, FileText, AlertCircle, RefreshCw, ChevronLeft, Menu, Wand2 } from 'lucide-react';
+import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig } from './types.ts';
+import { fetchChapters, generateHandoutFromText, generateHomework } from './geminiService.ts';
 import SelectionForm from './SelectionForm.tsx';
 import ChapterSelector from './ChapterSelector.tsx';
 import ManualUnitInput from './ManualUnitInput.tsx';
@@ -16,8 +16,6 @@ const LOADING_MESSAGES = [
   "優化視覺圖示中，請稍候...",
   "正在為特教學生調整內容...",
 ];
-
-const HISTORY_KEY = 'MATH_HISTORY_V19_FINAL';
 
 const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -40,14 +38,6 @@ const App: React.FC = () => {
   const [currentChapter, setCurrentChapter] = useState<{ title: string; sub: string } | null>(null);
   const [handout, setHandout] = useState<HandoutContent | null>(null);
   const [homework, setHomework] = useState<HomeworkContent | null>(null);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-
-  useEffect(() => {
-    const saved = localStorage.getItem(HISTORY_KEY);
-    if (saved) {
-      try { setHistory(JSON.parse(saved)); } catch (e) {}
-    }
-  }, []);
 
   const loadChapters = useCallback(async () => {
     setLoading(true);
@@ -56,7 +46,9 @@ const App: React.FC = () => {
       const data = await fetchChapters(params);
       setChapters(data);
     } catch (e: any) {
-      setError("無法與 AI 服務連線。請檢查您的網路環境或稍後再試。");
+      // 即使 fetch 拋出異常，我們也嘗試確保 chapters 不是空的
+      console.error("目錄讀取嚴重錯誤:", e);
+      setError("連線至 AI 服務時遇到一些阻礙。您可以嘗試刷新或直接使用手動輸入。");
     } finally {
       setLoading(false);
     }
@@ -64,7 +56,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     loadChapters();
-  }, [params.publisher, params.grade, params.semester]);
+  }, [params.publisher, params.grade, params.semester, loadChapters]);
 
   useEffect(() => {
     let interval: number;
@@ -81,8 +73,6 @@ const App: React.FC = () => {
     setShowSettings(false);
     setError(null);
     setLoading(true);
-    
-    // 手機版自動收起側邊欄以利閱覽
     if (window.innerWidth < 768) setIsSidebarCollapsed(true);
     
     try {
@@ -90,16 +80,8 @@ const App: React.FC = () => {
       setHandout(data);
       if (currentChapter?.sub !== sub) setHomework(null);
       setView('handout');
-      
-      const item: HistoryItem = { timestamp: Date.now(), params: { ...params }, chapter, sub, content: data };
-      setHistory(prev => {
-        const filtered = prev.filter(h => h.sub !== sub);
-        const updated = [item, ...filtered].slice(0, 10);
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
-        return updated;
-      });
     } catch (err: any) {
-      setError("生成教材時發生錯誤。請確認您的配置或點擊重試。");
+      setError("AI 目前無法生成該講義內容。請確認系統金鑰設定或稍後再試。");
     } finally {
       setLoading(false);
     }
@@ -127,7 +109,7 @@ const App: React.FC = () => {
       setHomework(data);
       setView('homework');
     } catch (err: any) {
-      setError("生成練習卷失敗。請再試一次。");
+      setError("練習卷生成失敗。");
     } finally {
       setLoading(false);
     }
@@ -136,31 +118,26 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen flex bg-slate-50 transition-all duration-500 overflow-hidden font-['Noto_Sans_TC']">
       
-      {/* 行動裝置側邊欄開關 */}
       {isSidebarCollapsed && (
         <button
           onClick={() => setIsSidebarCollapsed(false)}
-          className="fixed left-4 top-4 z-[99] p-4 bg-blue-600 text-white rounded-[1.5rem] shadow-2xl hover:scale-105 active:scale-95 transition-all no-print border-2 border-blue-500"
+          className="fixed left-6 top-6 z-[100] p-5 bg-blue-600 text-white rounded-[1.5rem] shadow-2xl hover:scale-110 active:scale-95 transition-all no-print border-4 border-white"
         >
           <Menu size={28} strokeWidth={3} />
         </button>
       )}
 
-      {/* 側邊欄 (設定區) */}
       <aside className={`
         ${isSidebarCollapsed ? 'w-0 opacity-0 pointer-events-none -translate-x-full' : 'w-full md:w-96 opacity-100 translate-x-0'}
-        bg-white no-print p-6 flex flex-col h-screen fixed md:sticky top-0 border-r border-slate-200 shadow-2xl z-[80]
+        bg-white no-print p-6 flex flex-col h-screen fixed md:sticky top-0 border-r border-slate-200 shadow-2xl z-[90]
         transition-all duration-500 overflow-hidden shrink-0
       `}>
         <div className="flex items-center justify-between mb-8 shrink-0">
           <div className="flex items-center gap-3 text-blue-600">
             <BookOpen size={32} strokeWidth={3} />
-            <h1 className="text-xl font-black tracking-tighter italic text-slate-900">特教數學助手</h1>
+            <h1 className="text-2xl font-black tracking-tighter italic text-slate-900">特教數學助手</h1>
           </div>
-          <button 
-            onClick={() => setIsSidebarCollapsed(true)}
-            className="p-2 hover:bg-slate-50 rounded-xl text-slate-400"
-          >
+          <button onClick={() => setIsSidebarCollapsed(true)} className="p-3 hover:bg-slate-50 rounded-2xl text-slate-400">
             <ChevronLeft size={28} strokeWidth={3} />
           </button>
         </div>
@@ -176,21 +153,21 @@ const App: React.FC = () => {
             <div className="flex flex-col gap-6">
               <button 
                 onClick={() => { setShowSettings(true); setError(null); }} 
-                className="group flex items-center gap-4 text-slate-500 font-bold py-5 hover:text-blue-600 transition-all border-b border-slate-100"
+                className="group flex items-center gap-4 text-slate-500 font-black py-6 hover:text-blue-600 transition-all border-b-4 border-slate-50"
               >
                 <ArrowLeft size={24} className="group-hover:-translate-x-2 transition-transform" /> 
-                <span className="text-lg">返回章節選擇</span>
+                <span className="text-lg">返回課程設定</span>
               </button>
               
-              <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-8 rounded-[2rem] shadow-xl text-white">
-                <div className="text-[10px] font-black uppercase opacity-60 mb-2 tracking-widest">目前單元</div>
-                <div className="text-xl font-black leading-tight truncate">{currentChapter?.sub || '未選擇'}</div>
+              <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-8 rounded-[2.5rem] shadow-xl text-white">
+                <div className="text-[10px] font-black uppercase opacity-60 mb-2 tracking-widest">目前正在製作</div>
+                <div className="text-2xl font-black leading-tight">{currentChapter?.sub || '未選擇單元'}</div>
               </div>
 
               <nav className="flex flex-col gap-4">
                 <button 
                   onClick={() => setView('handout')} 
-                  className={`flex items-center gap-5 px-8 py-5 rounded-[2rem] font-black transition-all text-xl ${
+                  className={`flex items-center gap-5 px-8 py-6 rounded-[2.5rem] font-black transition-all text-xl ${
                     view === 'handout' ? 'bg-blue-600 text-white shadow-xl scale-105' : 'text-slate-400 bg-slate-50'
                   }`}
                 >
@@ -199,7 +176,7 @@ const App: React.FC = () => {
                 <button 
                   onClick={() => homework && setView('homework')} 
                   disabled={!homework} 
-                  className={`flex items-center gap-5 px-8 py-5 rounded-[2rem] font-black transition-all text-xl ${
+                  className={`flex items-center gap-5 px-8 py-6 rounded-[2.5rem] font-black transition-all text-xl ${
                     view === 'homework' ? 'bg-blue-600 text-white shadow-xl scale-105' : 'text-slate-400 bg-slate-50 opacity-50'
                   }`}
                 >
@@ -211,32 +188,31 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* 主內容區 */}
-      <main className="flex-1 overflow-y-auto bg-slate-50 p-6 md:p-16 lg:p-24 relative scroll-smooth">
+      <main className="flex-1 overflow-y-auto bg-slate-50 p-6 md:p-20 relative scroll-smooth">
         {loading && (
-          <div className="h-full flex flex-col items-center justify-center text-center animate-in fade-in duration-300">
+          <div className="h-full flex flex-col items-center justify-center text-center">
             <div className="relative mb-12">
-               <div className="w-24 h-24 border-[8px] border-blue-100 rounded-full animate-pulse"></div>
-               <div className="absolute inset-0 w-24 h-24 border-[8px] border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+               <div className="w-28 h-28 border-[10px] border-blue-100 rounded-full animate-pulse"></div>
+               <div className="absolute inset-0 w-28 h-28 border-[10px] border-blue-600 border-t-transparent rounded-full animate-spin"></div>
             </div>
-            <h2 className="text-3xl font-black text-slate-800 italic mb-2">{LOADING_MESSAGES[loadingMsgIdx]}</h2>
-            <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">正在對齊教學內容...</p>
+            <h2 className="text-4xl font-black text-slate-800 italic tracking-tighter mb-4">{LOADING_MESSAGES[loadingMsgIdx]}</h2>
+            <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-sm">正在同步教學資料...</p>
           </div>
         )}
 
         {error && !loading && (
-          <div className="h-full flex flex-col items-center justify-center max-w-lg mx-auto animate-in zoom-in-95">
+          <div className="h-full flex flex-col items-center justify-center max-w-lg mx-auto">
             <div className="bg-white p-12 rounded-[4rem] border-4 border-rose-100 shadow-2xl text-center w-full relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-3 bg-rose-500"></div>
               <AlertCircle size={80} className="text-rose-500 mx-auto mb-8" />
-              <h3 className="text-2xl font-black text-slate-900 mb-4">生成遇到阻礙</h3>
-              <p className="text-slate-500 font-bold mb-10 leading-relaxed text-lg">{error}</p>
+              <h3 className="text-3xl font-black text-slate-900 mb-4">發現連線問題</h3>
+              <p className="text-slate-500 font-bold mb-12 leading-relaxed text-lg">{error}</p>
               <div className="flex flex-col gap-4">
                 <button onClick={handleRetry} className="bg-rose-500 text-white p-6 rounded-[2rem] font-black text-2xl shadow-xl active:scale-95 transition-all flex items-center justify-center gap-4">
                   <RefreshCw size={28} /> 再次重試
                 </button>
-                <button onClick={() => { setShowSettings(true); setError(null); setView('welcome'); }} className="text-slate-400 font-bold hover:text-slate-600 text-lg transition-colors">
-                  返回章節清單重新選擇
+                <button onClick={() => { setShowSettings(true); setError(null); setView('welcome'); }} className="text-slate-400 font-black hover:text-slate-600 text-lg py-2">
+                  回目錄直接使用在地課程
                 </button>
               </div>
             </div>
@@ -244,21 +220,21 @@ const App: React.FC = () => {
         )}
         
         {!loading && !error && view === 'welcome' && (
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 select-none animate-in fade-in duration-1000">
+          <div className="h-full flex flex-col items-center justify-center text-center p-6 md:p-10 select-none">
             <div className="relative mb-16">
-               <div className="absolute -inset-10 bg-blue-100/30 rounded-full blur-[60px] animate-pulse"></div>
-               <div className="w-44 h-44 bg-white border-[10px] border-blue-50 rounded-[4.5rem] flex items-center justify-center text-blue-600 shadow-2xl relative transition-transform hover:rotate-6 duration-500">
-                 <Wand2 size={90} strokeWidth={2.5} />
+               <div className="absolute -inset-12 bg-blue-100/40 rounded-full blur-[80px] animate-pulse"></div>
+               <div className="w-48 h-48 bg-white border-[12px] border-blue-50 rounded-[5rem] flex items-center justify-center text-blue-600 shadow-2xl relative transition-transform hover:rotate-6 duration-500">
+                 <Wand2 size={100} strokeWidth={2.5} />
                </div>
             </div>
-            <h2 className="text-5xl md:text-6xl font-black text-slate-900 mb-8 tracking-tighter italic">歡迎使用特教數學助手</h2>
-            <p className="text-slate-400 font-bold text-2xl mb-16 max-w-md leading-relaxed">
-              請從左側目錄中選取您要教的章節。AI 會自動為您生成微步化講義。
+            <h2 className="text-6xl md:text-7xl font-black text-slate-900 mb-8 tracking-tighter italic drop-shadow-sm">歡迎製作特教教材</h2>
+            <p className="text-slate-400 font-bold text-2xl mb-16 max-w-lg leading-relaxed">
+              點擊左側目錄選取章節，AI 老師將立即為您設計專業的資源班講義。
             </p>
             {isSidebarCollapsed && (
               <button 
                 onClick={() => setIsSidebarCollapsed(false)}
-                className="bg-blue-600 text-white px-12 py-7 rounded-[2.5rem] font-black text-2xl shadow-2xl hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-5 border-4 border-blue-500"
+                className="bg-blue-600 text-white px-16 py-8 rounded-[2.5rem] font-black text-3xl shadow-2xl hover:bg-blue-700 active:scale-95 flex items-center gap-6"
               >
                 <Menu size={32} /> 開啟章節清單
               </button>
@@ -267,7 +243,7 @@ const App: React.FC = () => {
         )}
 
         {!loading && !error && view === 'handout' && handout && (
-          <div className="mx-auto max-w-4xl space-y-12 pb-32 animate-in fade-in duration-700">
+          <div className="mx-auto max-w-4xl space-y-12 pb-32">
             <HandoutViewer content={handout} params={params} theme="default" />
             <div className="no-print">
               <HomeworkConfigSection onGenerate={handleGenerateHomework} isLoading={loading} />
@@ -276,7 +252,7 @@ const App: React.FC = () => {
         )}
 
         {!loading && !error && view === 'homework' && homework && (
-          <div className="mx-auto max-w-5xl pb-32 animate-in fade-in duration-700">
+          <div className="mx-auto max-w-5xl pb-32">
             <HomeworkViewer content={homework} params={params} theme="default" />
           </div>
         )}
