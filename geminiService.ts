@@ -12,40 +12,41 @@ const SYSTEM_INSTRUCTION = `你是一位專業的台灣國小資源班特教老�
 4. 練習卷 (Homework) 必須包含題目與老師提示，但「嚴禁」在練習卷內容中出現答案。`;
 
 /**
- * 終極 JSON 清洗器：解決所有 Unexpected token 錯誤
+ * 終極 JSON 提取器：只保留第一個括號到最後一個括號之間的內容
  */
 const cleanAndParse = (text: any) => {
   if (!text) return null;
-  let str = typeof text === 'string' ? text : String(text);
+  let raw = typeof text === 'string' ? text : String(text);
   
-  // 1. 移除 Markdown 標記
-  str = str.replace(/```json/gi, '').replace(/```/gi, '').trim();
+  // 移除 Markdown 標記
+  let cleaned = raw.replace(/```json/gi, '').replace(/```/gi, '').trim();
 
-  // 2. 尋找真正的 JSON 起點與終點
-  const startObj = str.indexOf('{');
-  const startArr = str.indexOf('[');
+  // 尋找 JSON 的邊界
+  const startBrace = cleaned.indexOf('{');
+  const startBracket = cleaned.indexOf('[');
   let startIdx = -1;
   let endChar = '';
 
-  if (startObj !== -1 && (startArr === -1 || startObj < startArr)) {
-    startIdx = startObj;
+  if (startBrace !== -1 && (startBracket === -1 || startBrace < startBracket)) {
+    startIdx = startBrace;
     endChar = '}';
-  } else if (startArr !== -1) {
-    startIdx = startArr;
+  } else if (startBracket !== -1) {
+    startIdx = startBracket;
     endChar = ']';
   }
 
   if (startIdx !== -1) {
-    const endIdx = str.lastIndexOf(endChar);
+    const endIdx = cleaned.lastIndexOf(endChar);
     if (endIdx !== -1) {
-      str = str.substring(startIdx, endIdx + 1);
+      // 關鍵修復：切除括號以外的所有文字（如 AI 的解釋或結尾語）
+      cleaned = cleaned.substring(startIdx, endIdx + 1);
     }
   }
 
   try {
-    return JSON.parse(str);
+    return JSON.parse(cleaned);
   } catch (e) {
-    console.error("解析失敗，原始文字:", text);
+    console.error("JSON 解析失敗:", e, "處理後的字串:", cleaned);
     return null;
   }
 };
@@ -111,7 +112,7 @@ const HOMEWORK_SCHEMA = {
 };
 
 export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]> => {
-  const cacheKey = `MATH_CH_V16_${params.publisher}_${params.grade}_${params.semester}`;
+  const cacheKey = `MATH_V17_${params.publisher}_${params.grade}_${params.semester}`;
   const cached = localStorage.getItem(cacheKey);
   if (cached) return JSON.parse(cached);
 
@@ -119,7 +120,7 @@ export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]>
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `列出台灣國小數學「${params.publisher}版」${params.grade}${params.semester}目錄 JSON。`,
+      contents: `請列出台灣國小數學「${params.publisher}版」${params.grade}${params.semester}目錄。`,
       config: { 
         responseMimeType: "application/json",
         responseSchema: CHAPTER_LIST_SCHEMA
@@ -130,7 +131,7 @@ export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]>
       localStorage.setItem(cacheKey, JSON.stringify(data));
       return data;
     }
-  } catch (e) { console.error(e); }
+  } catch (e) { console.error("抓取目錄失敗:", e); }
   return getLocalChapters(params.publisher, params.grade, params.semester);
 };
 
@@ -139,7 +140,7 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `為國小資源班生成「${chapter} - ${sub}」微步化講義。`,
+      contents: `生成「${chapter} - ${sub}」特教講義。`,
       config: { 
         systemInstruction: SYSTEM_INSTRUCTION, 
         responseMimeType: "application/json", 
@@ -149,12 +150,12 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
     const data = cleanAndParse(response.text);
     if (data) return data;
   } catch (e) { throw e; }
-  throw new Error("生成講義失敗");
+  throw new Error("講義生成內容異常");
 };
 
 export const generateHomework = async (params: SelectionParams, chapter: string, sub: string, config: HomeworkConfig): Promise<HomeworkContent> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-  const prompt = `生成單元「${chapter}-${sub}」練習卷。計算題 ${config.calculationCount} 題，應用題 ${config.wordProblemCount} 題。`;
+  const prompt = `為「${chapter}-${sub}」生成練習題。計算:${config.calculationCount} 題，應用:${config.wordProblemCount} 題。`;
   
   try {
     const response = await ai.models.generateContent({
@@ -169,5 +170,5 @@ export const generateHomework = async (params: SelectionParams, chapter: string,
     const data = cleanAndParse(response.text);
     if (data) return data;
   } catch (e) { throw e; }
-  throw new Error("生成練習卷失敗");
+  throw new Error("練習卷生成異常");
 };
