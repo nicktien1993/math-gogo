@@ -46,9 +46,8 @@ const App: React.FC = () => {
       const data = await fetchChapters(params);
       setChapters(data);
     } catch (e: any) {
-      // 即使 fetch 拋出異常，我們也嘗試確保 chapters 不是空的
       console.error("目錄讀取嚴重錯誤:", e);
-      setError("連線至 AI 服務時遇到一些阻礙。您可以嘗試刷新或直接使用手動輸入。");
+      setError(`系統訊息：${e.message || "未知錯誤"}`);
     } finally {
       setLoading(false);
     }
@@ -81,7 +80,7 @@ const App: React.FC = () => {
       if (currentChapter?.sub !== sub) setHomework(null);
       setView('handout');
     } catch (err: any) {
-      setError("AI 目前無法生成該講義內容。請確認系統金鑰設定或稍後再試。");
+      setError(`生成失敗：${err.message || "AI 服務器連線中斷"}`);
     } finally {
       setLoading(false);
     }
@@ -109,7 +108,7 @@ const App: React.FC = () => {
       setHomework(data);
       setView('homework');
     } catch (err: any) {
-      setError("練習卷生成失敗。");
+      setError(`練習卷生成出錯：${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -205,8 +204,8 @@ const App: React.FC = () => {
             <div className="bg-white p-12 rounded-[4rem] border-4 border-rose-100 shadow-2xl text-center w-full relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-3 bg-rose-500"></div>
               <AlertCircle size={80} className="text-rose-500 mx-auto mb-8" />
-              <h3 className="text-3xl font-black text-slate-900 mb-4">發現連線問題</h3>
-              <p className="text-slate-500 font-bold mb-12 leading-relaxed text-lg">{error}</p>
+              <h3 className="text-3xl font-black text-slate-900 mb-4">發現問題</h3>
+              <p className="text-slate-500 font-bold mb-12 leading-relaxed text-lg bg-slate-50 p-4 rounded-2xl border border-slate-100">{error}</p>
               <div className="flex flex-col gap-4">
                 <button onClick={handleRetry} className="bg-rose-500 text-white p-6 rounded-[2rem] font-black text-2xl shadow-xl active:scale-95 transition-all flex items-center justify-center gap-4">
                   <RefreshCw size={28} /> 再次重試
