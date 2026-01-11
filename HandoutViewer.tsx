@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { HandoutContent, SelectionParams, ThemeMode } from './types.ts';
 import DrawingCanvas from './DrawingCanvas.tsx';
 
@@ -14,188 +14,220 @@ export const renderMathContent = (text: any, colorCoding: boolean = true) => {
   const contentStr = typeof text === 'string' ? text : String(text);
   
   let processed = contentStr.replace(/\\n/g, '<br/>').trim();
-  const hasTags = /<[a-z][\s\S]*>/i.test(processed);
+  const hasSvg = /<svg[\s\S]*?<\/svg>/i.test(processed);
   
-  if (hasTags) {
-    processed = processed.replace(/<svg([\s\S]*?)>/gi, (match, attributes) => {
-      let fixedAttrs = attributes
-        .replace(/\bwidth=["']\d+["']/gi, '')
-        .replace(/\bheight=["']\d+["']/gi, '');
-      
-      if (!attributes.toLowerCase().includes('viewbox')) {
-        fixedAttrs += ' viewBox="0 0 400 250"'; 
+  if (hasSvg) {
+    // Process SVG parts: Remove hardcoded sizes and ensure viewBox exists
+    processed = processed.replace(/(<svg[\s\S]*?<\/svg>)/gi, (svgMatch) => {
+      // Robust removal of width and height attributes (handles units like px, em, %)
+      let cleanedSvg = svgMatch
+        .replace(/\bwidth=["'][^"']+["']/gi, '')
+        .replace(/\bheight=["'][^"']+["']/gi, '');
+
+      // Add default viewBox if missing
+      if (!cleanedSvg.toLowerCase().includes('viewbox')) {
+        cleanedSvg = cleanedSvg.replace('<svg', '<svg viewBox="0 0 400 250"');
       }
 
       return `
-      <div class="relative group my-8">
-        <div class="absolute inset-0 bg-slate-100/50 rounded-3xl -rotate-1 scale-[1.02] -z-10 group-hover:rotate-0 transition-transform"></div>
-        <svg ${fixedAttrs} class="max-w-full h-auto mx-auto block bg-white rounded-3xl p-4 border border-slate-100 shadow-sm" style="max-height: 300px; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.05));">
-          <defs>
-            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#f1f5f9" stroke-width="1"/>
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#grid)" />
+      <div class="svg-visual-container relative group my-8">
+        <div class="absolute inset-0 bg-slate-100/20 rounded-[3rem] -rotate-1 scale-[1.01] -z-10"></div>
+        <div class="w-full max-w-2xl mx-auto block bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm overflow-hidden flex items-center justify-center" style="min-height: 200px; max-height: 400px;">
+          <div class="w-full h-full flex items-center justify-center">
+            ${cleanedSvg}
+          </div>
+        </div>
+      </div>
       `;
     });
 
+    // Apply color coding to mathematical symbols only outside of HTML tags
     if (colorCoding) {
       processed = processed.replace(/(<[^>]+>)|([\+\-×÷=><])/gi, (match, tag, symbol) => {
         if (tag) return tag;
-        return `<span class="text-rose-600 font-black mx-1 inline-block transform hover:scale-110 transition-transform duration-200">${symbol}</span>`;
+        return `<span class="text-rose-600 font-black mx-1 inline-block transition-transform hover:scale-110">${symbol}</span>`;
       });
     }
 
     return <span className="inline-block w-full align-middle" dangerouslySetInnerHTML={{ __html: processed }} />;
   }
 
-  const fracRegex = /(\d+)\s*又\s*(\d+)\/(\d+)|(\d+)\/(\d+)/g;
-  if (fracRegex.test(contentStr)) {
-    return <span className="math-text text-3xl font-bold">{contentStr}</span>;
+  // Basic text math rendering
+  if (colorCoding) {
+    processed = processed.replace(/([\+\-×÷=><])/gi, (symbol) => {
+      return `<span class="text-rose-600 font-black mx-1 inline-block">${symbol}</span>`;
+    });
   }
 
-  return <span className="math-text leading-relaxed align-middle">{contentStr}</span>;
+  return <span className="math-text leading-relaxed align-middle" dangerouslySetInnerHTML={{ __html: processed }} />;
 };
 
-// 拆分步驟標題與內文的輔助組件
+const ConceptCard: React.FC<{ text: string; index: number }> = ({ text, index }) => {
+  const splitIdx = text.indexOf('：') !== -1 ? text.indexOf('：') : text.indexOf(':');
+  let label = `重點 ${index + 1}`;
+  let content = text;
+
+  if (splitIdx !== -1 && splitIdx < 12) {
+    label = text.substring(0, splitIdx).trim();
+    content = text.substring(splitIdx + 1).trim();
+  }
+
+  return (
+    <div className="group relative bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all duration-300 mb-8 last:mb-0">
+      <div className="absolute top-0 left-0 w-2 h-full bg-blue-500 rounded-l-full group-hover:w-3 transition-all"></div>
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <span className="bg-blue-600 text-white px-4 py-1 rounded-xl text-xs font-black uppercase tracking-widest shadow-md">
+            {label}
+          </span>
+          <div className="h-[2px] flex-1 bg-slate-50"></div>
+        </div>
+        <div className="text-3xl md:text-4xl font-black text-slate-800 leading-[1.8] tracking-tight">
+          {renderMathContent(content)}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const StepContent: React.FC<{ text: string }> = ({ text }) => {
-  // 尋找第一個句號作為分割點
   const splitIndex = text.indexOf('。');
-  
   if (splitIndex !== -1) {
     const title = text.substring(0, splitIndex + 1);
     let body = text.substring(splitIndex + 1).trim();
-    
-    // 移除開頭可能存在的分隔符號
     body = body.replace(/^[-\s]+/, '');
-
     return (
       <div className="flex flex-col gap-3">
         <div className="text-4xl font-black text-slate-900 tracking-tight leading-snug">
           {renderMathContent(title)}
         </div>
         {body && (
-          <div className="text-3xl font-bold text-slate-600 leading-relaxed pt-1">
+          <div className="text-3xl font-bold text-slate-600 leading-relaxed pt-1 border-l-4 border-slate-100 pl-6">
             {renderMathContent(body)}
           </div>
         )}
       </div>
     );
   }
-
   return <div className="text-3xl font-bold text-slate-700 leading-relaxed">{renderMathContent(text)}</div>;
 };
 
 const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
   const [visibleCanvas, setVisibleCanvas] = useState<Record<string, boolean>>({});
   
-  if (!content) return (
-    <div className="flex flex-col items-center justify-center p-20 text-slate-400 font-bold">
-      <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-400 rounded-full animate-spin mb-4"></div>
-      正在排版講義內容...
-    </div>
-  );
+  const structuredConcepts = useMemo(() => {
+    if (!content.concept) return [];
+    return content.concept
+      .split(/(?=[重點\d]+\s*[:：])|\n|(?<=。)/g)
+      .map(s => s.trim())
+      .filter(s => s.length > 5);
+  }, [content.concept]);
 
-  const examples = Array.isArray(content.examples) ? content.examples : [];
+  if (!content) return <div className="p-20 text-center font-bold text-slate-400">講義內容載入中...</div>;
 
   return (
-    <div className="bg-white rounded-[3rem] shadow-2xl overflow-hidden print:shadow-none print:rounded-none border border-slate-100">
-      {/* 依照截圖風格優化 Header */}
-      <div className="bg-[#0f172a] p-10 md:p-14 flex flex-col md:flex-row justify-between items-center text-white no-print gap-8 border-b-8 border-blue-600 rounded-t-[3rem]">
+    <div className="bg-white rounded-[4rem] shadow-2xl overflow-hidden print:shadow-none print:rounded-none border border-slate-100">
+      <div className="bg-[#0f172a] p-12 md:p-16 flex flex-col md:flex-row justify-between items-center text-white no-print gap-8 border-b-[12px] border-blue-600">
         <div className="text-center md:text-left">
-          <h1 className="text-5xl md:text-6xl font-black mb-6 tracking-tighter italic">
-            {content.title || '數學講義'}
+          <h1 className="text-6xl md:text-7xl font-black mb-8 tracking-tighter italic drop-shadow-lg">
+            {content.title || '數學教學講義'}
           </h1>
-          <div className="flex flex-wrap gap-3 justify-center md:justify-start">
-            <span className="bg-blue-600 px-5 py-2 rounded-full font-black text-sm shadow-lg border border-blue-400">
+          <div className="flex flex-wrap gap-4 justify-center md:justify-start">
+            <span className="bg-blue-600 px-6 py-2.5 rounded-2xl font-black text-sm shadow-lg border border-blue-400 uppercase tracking-widest">
               {params.grade} {params.semester}學期
             </span>
-            <span className="bg-slate-800 px-5 py-2 rounded-full font-black text-sm border border-slate-600 shadow-lg">
+            <span className="bg-slate-800 px-6 py-2.5 rounded-2xl font-black text-sm border border-slate-600 shadow-lg uppercase tracking-widest">
               {params.publisher}版
             </span>
           </div>
         </div>
-        <button 
-          onClick={() => window.print()} 
-          className="bg-white text-slate-900 hover:bg-slate-50 px-10 py-4 rounded-2xl font-black transition-all shadow-2xl active:scale-95 text-xl flex items-center gap-3"
-        >
-          <span className="text-2xl">🖨️</span>
-          <span>列印講義</span>
-        </button>
       </div>
 
-      <div className="p-8 md:p-20 space-y-24">
-        {content.visualAidSvg && (
-          <section className="mb-12">
-            {renderMathContent(content.visualAidSvg)}
-          </section>
-        )}
-
-        <section className="bg-slate-50 p-12 rounded-[3.5rem] border-4 border-dashed border-slate-200 relative overflow-hidden">
-          <div className="absolute -top-10 -right-10 w-40 h-40 bg-blue-100 rounded-full opacity-30"></div>
-          <h2 className="text-slate-900 font-black mb-10 text-3xl tracking-tight flex items-center gap-4">
-            <span className="w-4 h-12 bg-blue-600 rounded-full"></span> 核心觀念
-          </h2>
-          <div className="text-4xl leading-[2.2] font-bold text-slate-700">
-            {renderMathContent(content.concept)}
+      <div className="p-10 md:p-24 space-y-32">
+        <section className="relative">
+          <div className="flex items-center gap-6 mb-16">
+            <div className="w-4 h-14 bg-blue-600 rounded-full shadow-[0_0_15px_rgba(37,99,235,0.4)]"></div>
+            <h2 className="text-slate-900 font-black text-5xl tracking-tighter italic">核心觀念</h2>
           </div>
+          
+          <div className="grid grid-cols-1 gap-6">
+            {structuredConcepts.map((item, idx) => (
+              <ConceptCard key={idx} text={item} index={idx} />
+            ))}
+          </div>
+
+          {content.visualAidSvg && (
+            <div className="mt-16 animate-in fade-in slide-in-from-bottom-8 duration-1000">
+              {renderMathContent(content.visualAidSvg)}
+            </div>
+          )}
         </section>
 
-        <section className="space-y-40">
-          {examples.map((ex, i) => (
-            <div key={i} className="relative page-break-inside-avoid animate-in fade-in duration-700">
+        <section className="space-y-48">
+          <div className="h-[2px] bg-slate-100 w-full"></div>
+          {(content.examples || []).map((ex, i) => (
+            <div key={i} className="relative page-break-inside-avoid">
               <div className="flex items-center gap-6 mb-12">
-                <span className="bg-slate-900 text-white w-14 h-14 rounded-2xl flex items-center justify-center font-black text-3xl shadow-xl transform -rotate-3">
+                <span className="bg-slate-900 text-white w-16 h-16 rounded-[1.8rem] flex items-center justify-center font-black text-4xl shadow-2xl transform -rotate-3 border-4 border-slate-800">
                   {i+1}
                 </span>
-                <h3 className="text-2xl font-black text-slate-400 uppercase tracking-widest">範例解析</h3>
+                <h3 className="text-3xl font-black text-slate-300 uppercase tracking-widest italic">Example</h3>
                 <button 
                   onClick={() => setVisibleCanvas(p => ({...p, [`ex-${i}`]: !p[`ex-${i}`]}))} 
-                  className="no-print ml-auto text-sm font-black text-slate-400 hover:text-blue-600 transition flex items-center gap-2 px-5 py-3 bg-white rounded-2xl border border-slate-200 shadow-sm"
+                  className="no-print ml-auto text-sm font-black text-slate-400 hover:text-blue-600 transition-all flex items-center gap-2 px-6 py-3.5 bg-white rounded-2xl border-2 border-slate-100 shadow-sm hover:border-blue-200"
                 >
-                  {visibleCanvas[`ex-${i}`] ? '✕ 隱藏手寫板' : '✎ 開啟計算區'}
+                  {visibleCanvas[`ex-${i}`] ? '✕ 關閉手寫板' : '✎ 開啟計算區'}
                 </button>
               </div>
               
+              <div className="text-5xl font-black mb-16 text-slate-900 leading-[1.5] tracking-tighter">
+                {renderMathContent(ex.question)}
+              </div>
+
+              {visibleCanvas[`ex-${i}`] && (
+                <div className="mb-16 no-print animate-in zoom-in-95 duration-300">
+                  <DrawingCanvas id={`ex-${i}`} height={550} />
+                </div>
+              )}
+
               {ex.visualAidSvg && (
                 <div className="mb-14">
                   {renderMathContent(ex.visualAidSvg)}
                 </div>
               )}
 
-              <div className="text-5xl font-black mb-16 text-slate-900 leading-snug tracking-tighter">
-                {renderMathContent(ex.question)}
-              </div>
-
-              {visibleCanvas[`ex-${i}`] && (
-                <div className="mb-16 no-print">
-                  <DrawingCanvas id={`ex-${i}`} height={500} />
-                </div>
-              )}
-
-              <div className="space-y-16 bg-blue-50/40 p-14 rounded-[4rem] border-2 border-blue-100 shadow-sm relative">
-                <div className="absolute top-8 left-8 text-blue-100/50 font-black text-9xl -z-10 select-none pointer-events-none">STEP</div>
+              <div className="space-y-16 bg-blue-50/30 p-12 md:p-16 rounded-[4.5rem] border-4 border-white shadow-[inset_0_4px_12px_rgba(0,0,0,0.02)] relative">
                 {(ex.stepByStep || []).map((s, si) => (
-                  <div key={si} className="flex gap-10 items-start group">
-                    <span className="w-16 h-16 rounded-full bg-white border-4 border-blue-200 flex items-center justify-center font-black text-blue-600 shrink-0 shadow-sm text-3xl">{si+1}</span>
+                  <div key={si} className="flex gap-10 items-start">
+                    <span className="w-16 h-16 rounded-2xl bg-white border-4 border-blue-100 flex items-center justify-center font-black text-blue-600 shrink-0 shadow-sm text-3xl">{si+1}</span>
                     <div className="flex-1 pt-1">
                       <StepContent text={s} />
                     </div>
                   </div>
                 ))}
                 
-                <div className="mt-16 pt-16 border-t-4 border-dashed border-blue-200 flex flex-col gap-6">
-                  <div className="flex items-center gap-4">
-                    <span className="bg-emerald-500 text-white px-8 py-2 rounded-2xl font-black text-sm uppercase tracking-widest shadow-lg">答案結果</span>
-                    <div className="text-6xl font-black text-emerald-600 tracking-tighter">
-                      {renderMathContent(ex.answer, false)}
-                    </div>
+                <div className="mt-16 pt-16 border-t-4 border-dashed border-blue-200 flex flex-col md:flex-row items-center gap-8">
+                  <div className="bg-emerald-500 text-white px-8 py-3 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl rotate-1">
+                    正確答案
+                  </div>
+                  <div className="text-7xl font-black text-emerald-600 tracking-tighter drop-shadow-sm">
+                    {renderMathContent(ex.answer, false)}
                   </div>
                 </div>
               </div>
             </div>
           ))}
         </section>
+      </div>
+
+      <div className="p-12 border-t border-slate-100 flex justify-center no-print bg-slate-50">
+        <button 
+          onClick={() => window.print()} 
+          className="group bg-slate-900 text-white hover:bg-black px-16 py-6 rounded-[2.5rem] font-black transition-all shadow-2xl active:scale-95 text-3xl flex items-center gap-6"
+        >
+          <span className="group-hover:animate-bounce">🖨️</span>
+          <span>立即列印講義</span>
+        </button>
       </div>
     </div>
   );

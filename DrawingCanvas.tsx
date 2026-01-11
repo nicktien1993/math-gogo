@@ -13,7 +13,6 @@ const DrawingCanvas: React.FC<Props> = ({ height = 400, id }) => {
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
   const [brushColor, setBrushColor] = useState('#000000');
   
-  // 歷史紀錄與狀態管理
   const state = useRef({
     lastX: 0,
     lastY: 0,
@@ -21,8 +20,8 @@ const DrawingCanvas: React.FC<Props> = ({ height = 400, id }) => {
     maxHistory: 20,
   });
 
-  // 繪製背景輔助線
   const drawBackground = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    ctx.save();
     ctx.strokeStyle = '#f1f5f9';
     ctx.lineWidth = 1;
     for (let y = 40; y < height; y += 40) {
@@ -31,59 +30,57 @@ const DrawingCanvas: React.FC<Props> = ({ height = 400, id }) => {
       ctx.lineTo(width, y);
       ctx.stroke();
     }
+    ctx.restore();
   };
 
-  useEffect(() => {
+  const setupCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas || !containerRef.current) return;
     
-    const resizeCanvas = () => {
-      const rect = containerRef.current!.getBoundingClientRect();
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
 
-      // 儲存目前的內容快照，以便縮放後嘗試還原
-      let snapshot: ImageData | null = null;
-      if (canvas.width > 0 && canvas.height > 0) {
+    let snapshot: ImageData | null = null;
+    if (canvas.width > 0 && canvas.height > 0) {
+      try {
         snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      }
+      } catch(e) {}
+    }
 
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = rect.width * dpr;
-      canvas.height = height * dpr;
-      canvas.style.height = `${height}px`;
-      ctx.scale(dpr, dpr);
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.height = `${height}px`;
+    
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawBackground(ctx, rect.width, height);
 
-      drawBackground(ctx, rect.width, height);
-
-      if (snapshot) {
+    if (snapshot) {
+      try {
         ctx.putImageData(snapshot, 0, 0);
-      }
-    };
+      } catch(e) {}
+    }
+  };
 
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    return () => window.removeEventListener('resize', resizeCanvas);
+  useEffect(() => {
+    setupCanvas();
+    const handleResize = () => setupCanvas();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, [height]);
 
   const saveToHistory = () => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d', { willReadFrequently: true });
     if (!canvas || !ctx) return;
-
     const snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
     state.current.history.push(snapshot);
-    
-    // 限制歷史紀錄長度
-    if (state.current.history.length > state.current.maxHistory) {
-      state.current.history.shift();
-    }
+    if (state.current.history.length > state.current.maxHistory) state.current.history.shift();
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    // 在開始畫新的一筆前，先儲存當前狀態
     saveToHistory();
-
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -99,7 +96,7 @@ const DrawingCanvas: React.FC<Props> = ({ height = 400, id }) => {
     ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = tool === 'eraser' ? 30 : 4;
+    ctx.lineWidth = tool === 'eraser' ? 40 : 4;
     ctx.strokeStyle = brushColor;
     (e.target as Element).setPointerCapture(e.pointerId);
   };
@@ -121,96 +118,40 @@ const DrawingCanvas: React.FC<Props> = ({ height = 400, id }) => {
     state.current.lastY = y;
   };
 
-  const handlePointerUp = () => {
-    setIsDrawing(false);
-  };
-
-  const handleUndo = () => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx || state.current.history.length === 0) return;
-
-    const previousState = state.current.history.pop();
-    if (previousState) {
-      ctx.putImageData(previousState, 0, 0);
-    }
-  };
-
   const handleClearAll = () => {
-    if (!window.confirm('確定要清除所有手寫內容嗎？')) return;
-    
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
+    if (!canvas || !ctx || !containerRef.current) return;
 
-    // 清除畫布
+    const dpr = window.devicePixelRatio || 1;
+    const rect = containerRef.current.getBoundingClientRect();
+
+    // Reset transform before clearRect to wipe physical pixels correctly
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // 重新繪製背景線
-    const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    // 重設 transform 以繪製正確的背景線
+    // Restore scaling and redraw grid
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawBackground(ctx, rect.width, height);
     
-    // 清空歷史紀錄
     state.current.history = [];
   };
 
   return (
-    <div ref={containerRef} className="w-full bg-white rounded-2xl border-2 border-slate-200 overflow-hidden shadow-inner no-print">
-      <div className="p-3 bg-slate-50 border-b flex flex-wrap gap-2 items-center">
-        <div className="flex gap-1 bg-white p-1 rounded-xl border border-slate-200">
-          <button 
-            onClick={() => setTool('pen')} 
-            className={`px-4 py-1.5 rounded-lg font-black text-sm transition ${tool === 'pen' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-50'}`}
-          >
-            🖊️ 畫筆
-          </button>
-          <button 
-            onClick={() => setTool('eraser')} 
-            className={`px-4 py-1.5 rounded-lg font-black text-sm transition ${tool === 'eraser' ? 'bg-rose-500 text-white' : 'text-slate-400 hover:bg-slate-50'}`}
-          >
-            🧽 橡皮擦
-          </button>
+    <div ref={containerRef} className="w-full bg-white rounded-[3rem] border-4 border-slate-100 overflow-hidden shadow-inner no-print">
+      <div className="p-4 bg-slate-50 border-b flex flex-wrap gap-3 items-center">
+        <div className="flex gap-2 bg-white p-2 rounded-2xl border border-slate-200">
+          <button onClick={() => setTool('pen')} className={`px-6 py-2 rounded-xl font-black text-sm transition ${tool === 'pen' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400'}`}>🖊️ 筆</button>
+          <button onClick={() => setTool('eraser')} className={`px-6 py-2 rounded-xl font-black text-sm transition ${tool === 'eraser' ? 'bg-rose-500 text-white shadow-lg' : 'text-slate-400'}`}>🧽 擦</button>
         </div>
-
-        <div className="flex gap-2 mx-2">
+        <div className="flex gap-3 px-4">
           {['#000000', '#ef4444', '#3b82f6', '#10b981'].map(c => (
-            <button 
-              key={c} 
-              onClick={() => { setBrushColor(c); setTool('pen'); }} 
-              className={`w-8 h-8 rounded-full border-2 transition ${brushColor === c && tool === 'pen' ? 'border-slate-800 scale-110 shadow-md' : 'border-white'}`} 
-              style={{ backgroundColor: c }} 
-            />
+            <button key={c} onClick={() => { setBrushColor(c); setTool('pen'); }} className={`w-10 h-10 rounded-full border-4 transition ${brushColor === c && tool === 'pen' ? 'border-slate-900 scale-125 shadow-md' : 'border-white'}`} style={{ backgroundColor: c }} />
           ))}
         </div>
-
-        <div className="flex gap-2 ml-auto">
-          <button 
-            onClick={handleUndo} 
-            className="px-4 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-black text-sm hover:bg-slate-50 active:scale-95 transition"
-            title="回復上一步"
-          >
-            ↩ 回復
-          </button>
-          <button 
-            onClick={handleClearAll} 
-            className="px-4 py-1.5 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl font-black text-sm hover:bg-rose-100 active:scale-95 transition"
-            title="清除全部"
-          >
-            🗑️ 全擦
-          </button>
-        </div>
+        <button onClick={handleClearAll} className="ml-auto px-6 py-2 bg-rose-50 text-rose-600 rounded-xl font-black text-sm hover:bg-rose-100 transition border border-rose-100 active:scale-95 transition-all">🗑️ 全擦</button>
       </div>
-      <canvas 
-        ref={canvasRef} 
-        onPointerDown={handlePointerDown} 
-        onPointerMove={handlePointerMove} 
-        onPointerUp={handlePointerUp} 
-        onPointerLeave={handlePointerUp}
-        className="w-full cursor-crosshair block touch-none" 
-      />
+      <canvas ref={canvasRef} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={() => setIsDrawing(false)} className="w-full cursor-crosshair block touch-none" />
     </div>
   );
 };
