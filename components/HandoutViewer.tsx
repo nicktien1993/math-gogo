@@ -11,15 +11,10 @@ interface Props {
 
 declare var html2pdf: any;
 
-/**
- * 通用數學內容渲染函數
- * 具備 $ 符號過濾與 SVG 透明化處理
- */
 export const renderMathContent = (text: any, colorCoding: boolean = true) => {
   if (text === null || text === undefined) return null;
   let contentStr = typeof text === 'string' ? text : String(text);
   
-  // 【最核心修復】：在所有邏輯開始前，強制移除所有 $ 符號
   contentStr = contentStr.replace(/\$/g, '');
 
   let processed = contentStr.replace(/\\n/g, '<br/>').trim();
@@ -31,16 +26,12 @@ export const renderMathContent = (text: any, colorCoding: boolean = true) => {
         .replace(/\bwidth=["'][^"']+["']/gi, '')
         .replace(/\bheight=["'][^"']+["']/gi, '');
 
-      // 強制將所有圖形元素的填充設為 none，確保不遮擋文字
       cleanedSvg = cleanedSvg.replace(/<rect([^>]*)fill=["'][^"']+["']([^>]*)>/gi, '<rect$1fill="none"$2>');
       cleanedSvg = cleanedSvg.replace(/<circle([^>]*)fill=["'][^"']+["']([^>]*)>/gi, '<circle$1fill="none"$2>');
       cleanedSvg = cleanedSvg.replace(/<ellipse([^>]*)fill=["'][^"']+["']([^>]*)>/gi, '<ellipse$1fill="none"$2>');
       cleanedSvg = cleanedSvg.replace(/<path([^>]*)fill=["'][^"']+["']([^>]*)>/gi, '<path$1fill="none"$2>');
-
-      // 如果標籤內完全沒有 fill 屬性，則在標籤開頭注入 fill="none"
       cleanedSvg = cleanedSvg.replace(/<(rect|circle|ellipse|path)(?![^>]*fill=)([^>]*)>/gi, '<$1 fill="none"$2>');
 
-      // 強制確保有 viewBox
       if (!cleanedSvg.toLowerCase().includes('viewbox')) {
         cleanedSvg = cleanedSvg.replace('<svg', '<svg viewBox="0 0 400 400"');
       }
@@ -55,7 +46,6 @@ export const renderMathContent = (text: any, colorCoding: boolean = true) => {
     });
 
     if (colorCoding) {
-      // 為數學符號加上顏色（避開 HTML 標籤內部的內容）
       processed = processed.replace(/(<[^>]+>)|([\+\-×÷=><])/gi, (match, tag, symbol) => {
         if (tag) return tag;
         return `<span class="text-rose-600 font-black mx-1 inline-block">${symbol}</span>`;
@@ -148,7 +138,7 @@ const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
         </h1>
         <div className="flex gap-3">
           <span className="bg-blue-600 px-4 py-1.5 rounded-xl font-black text-[10px] uppercase tracking-widest">
-            {params.grade}
+            資源班特教教材
           </span>
           <span className="bg-slate-700 px-4 py-1.5 rounded-xl font-black text-[10px] uppercase tracking-widest">
             {params.difficulty} 難度

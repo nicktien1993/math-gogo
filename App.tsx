@@ -15,22 +15,22 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // Initialize with all required fields for SelectionParams
+  // Initialize params with all required fields of SelectionParams
   const [params, setParams] = useState<SelectionParams>({
+    difficulty: '中',
+    unitTitle: '',
+    grade: '', // 無預設年級
     publisher: '康軒',
     year: '113',
-    grade: '一年級',
-    semester: '上',
-    difficulty: '中',
-    unitTitle: ''
+    semester: '上'
   });
   
   const [handout, setHandout] = useState<HandoutContent | null>(null);
   const [homework, setHomework] = useState<HomeworkContent | null>(null);
 
   const handleStartGenerate = useCallback(async () => {
-    if (!params.unitTitle.trim()) {
-      setError("請輸入單元名稱！");
+    if (!params.unitTitle.trim() || !params.grade) {
+      setError("請選取年級並輸入單元名稱！");
       return;
     }
     setLoading(true);
@@ -91,7 +91,8 @@ const App: React.FC = () => {
                 <ArrowLeft size={20} /> 修改單元設定
               </button>
               <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-8 rounded-[2.5rem] text-white shadow-xl">
-                <div className="text-[10px] font-black opacity-60 uppercase mb-2 tracking-widest">目前單元</div>
+                <div className="text-[10px] font-black opacity-60 uppercase mb-2 tracking-widest">目前設定</div>
+                <div className="text-lg font-black opacity-80 mb-1">{params.grade} · {params.difficulty}程度</div>
                 <div className="text-2xl font-black leading-tight">{params.unitTitle}</div>
               </div>
               <nav className="space-y-3">
@@ -138,7 +139,7 @@ const App: React.FC = () => {
             </div>
             <h2 className="text-6xl font-black text-slate-900 mb-6 italic tracking-tighter">歡迎使用特教數學助手</h2>
             <p className="text-slate-400 font-bold text-2xl max-w-xl leading-relaxed">
-              請在左側輸入年級與單元名稱，AI 將自動為您編寫微步化教材。
+              選取年級並輸入教學目標，AI 將為您編寫客製化的微步化教材。
             </p>
           </div>
         )}

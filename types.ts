@@ -1,24 +1,23 @@
 
-export type Grade = '一年級' | '二年級' | '三年級' | '四年級' | '五年級' | '六年級';
 export type Difficulty = '易' | '中' | '難';
 export type ThemeMode = 'default' | 'warm' | 'cold';
+export type Grade = '一年級' | '二年級' | '三年級' | '四年級' | '五年級' | '六年級' | '';
 export type Publisher = '康軒' | '南一' | '翰林';
 export type Semester = '上' | '下';
 
-// Missing Chapter interface for curriculum data
+export interface SelectionParams {
+  difficulty: Difficulty;
+  unitTitle: string;
+  grade: Grade;
+  publisher: Publisher;
+  year: string;
+  semester: Semester;
+}
+
 export interface Chapter {
   id: string;
   title: string;
   subChapters: string[];
-}
-
-export interface SelectionParams {
-  publisher: Publisher;
-  year: string;
-  grade: Grade;
-  semester: Semester;
-  difficulty: Difficulty;
-  unitTitle: string;
 }
 
 export interface HandoutContent {
@@ -33,10 +32,6 @@ export interface HandoutContent {
   }>;
   tips: string;
   checklist: string[]; 
-  exercises?: Array<{
-    question: string;
-    visualAidSvg?: string;
-  }>;
 }
 
 export interface HomeworkConfig {

@@ -28,16 +28,19 @@ const robustExtractJSON = (text: string) => {
 const SYSTEM_PROMPT = `你是一位專業的台灣國小資源班特教老師。
 請為學生生成「微步化（小步子）」教材。
 
+【生成邏輯】
+1. 請根據使用者提供的「單元名稱」判斷這屬於哪一個數學領域。
+2. 根據選定的「年級」與「難度」，調整數值的複雜度（例如：一年級加法不超過20，三年級可涉及三位數）。
+3. 使用台灣國小數學術語（例如：進位、退位、因數）。
+
 【零容忍規則：嚴禁 $ 符號】
 - 絕對禁止使用 $ 符號來包裹數學公式。
-- 錯誤範例：$1+1=2$ (禁止)
-- 正確範例：1+1=2 (必須這樣寫)
-- 如果你在輸出中包含任何 $ 符號，該教材將無法閱讀，請務必遵守。
+- 正確範例：10 x 3.14 = 31.4 (不准加任何 $)。
 
 【SVG 繪圖規範：透明填充】
-1. 繪製矩形 <rect> 或圓形 <circle> 時，必須設定 fill="none"，以免遮擋下方的文字或數字。
-2. viewBox="0 0 400 400"，stroke="#000000"，stroke-width="3"。
-3. 繪製順序：背景圖形先畫，文字與數字後畫，確保數字在最上層。`;
+1. 繪製圖解時，必須設定 fill="none"，以免遮擋下方的文字。
+2. 每個範例必須附帶一個與題目相關的視覺化圖解 SVG。
+3. viewBox="0 0 400 400"，粗線條 stroke="#000000" (3px)。`;
 
 const HANDOUT_SCHEMA = {
   type: Type.OBJECT,
@@ -64,15 +67,36 @@ const HANDOUT_SCHEMA = {
   required: ["title", "concept", "examples", "tips", "checklist", "visualAidSvg"]
 };
 
+const HOMEWORK_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING },
+    questions: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          type: { type: Type.STRING, description: "計算題或應用題" },
+          content: { type: Type.STRING },
+          hint: { type: Type.STRING },
+          answer: { type: Type.STRING },
+          visualAidSvg: { type: Type.STRING, description: "必填，透明填充的 SVG 程式碼" }
+        },
+        required: ["type", "content", "answer", "visualAidSvg"]
+      }
+    },
+    checklist: { type: Type.ARRAY, items: { type: Type.STRING } }
+  },
+  required: ["title", "questions", "checklist"]
+};
+
 export const generateHandout = async (params: SelectionParams): Promise<HandoutContent> => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("請設定 API 金鑰。");
-
   const ai = new GoogleGenAI({ apiKey: apiKey as string });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
-      contents: `為國小「${params.grade}」資源班學生製作數學講義。單元：${params.unitTitle}。難度：${params.difficulty}。再次強調：禁止使用 $ 符號，圖形必須透明。`,
+      contents: `為國小「${params.grade}」資源班學生製作數學講義。單元：${params.unitTitle}。難度要求：${params.difficulty}。請以此難度為基準生成微步化內容。嚴禁 $。`,
       config: { 
         systemInstruction: SYSTEM_PROMPT,
         responseMimeType: "application/json",
@@ -80,7 +104,7 @@ export const generateHandout = async (params: SelectionParams): Promise<HandoutC
       }
     });
     const data = robustExtractJSON(response.text);
-    if (!data) throw new Error("AI 回傳格式錯誤");
+    if (!data) throw new Error("解析失敗");
     return data;
   } catch (e: any) {
     throw new Error(e.message || "生成失敗");
@@ -93,16 +117,17 @@ export const generateHomework = async (params: SelectionParams, config: Homework
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
-      contents: `針對單元「${params.unitTitle}」製作隨堂練習卷。計算題 ${config.calculationCount} 題，應用題 ${config.wordProblemCount} 題。禁止使用 $ 符號。`,
+      contents: `製作國小「${params.grade}」數學練習卷。單元：${params.unitTitle}。計算題 ${config.calculationCount} 題，應用題 ${config.wordProblemCount} 題。難度：${params.difficulty}。嚴禁 $。`,
       config: { 
         systemInstruction: SYSTEM_PROMPT, 
-        responseMimeType: "application/json" 
+        responseMimeType: "application/json",
+        responseSchema: HOMEWORK_SCHEMA
       }
     });
     const data = robustExtractJSON(response.text);
-    if (!data) throw new Error("練習卷生成失敗");
+    if (!data) throw new Error("練習卷解析失敗");
     return data;
   } catch (e: any) {
-    throw new Error("API 錯誤");
+    throw new Error("API 傳輸錯誤，請重試");
   }
 };
