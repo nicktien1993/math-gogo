@@ -1,19 +1,21 @@
 
 import React from 'react';
-import { SelectionParams, Grade, Semester, Difficulty } from './types.ts';
+import { SelectionParams, Grade, Semester, Difficulty, Publisher } from './types.ts';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Props {
   onChange: (params: SelectionParams) => void;
+  onGenerate: () => void;
   isLoading: boolean;
   params: SelectionParams;
 }
 
-const SelectionForm: React.FC<Props> = ({ onChange, isLoading, params }) => {
+const SelectionForm: React.FC<Props> = ({ onChange, onGenerate, isLoading, params }) => {
   const handleChange = (key: keyof SelectionParams, value: any) => {
     onChange({ ...params, [key]: value });
   };
 
+  const publishers: Publisher[] = ['康軒', '南一', '翰林'];
   const grades: Grade[] = ['一年級', '二年級', '三年級', '四年級', '五年級', '六年級'];
   const semesters: Semester[] = ['上', '下'];
   const difficulties: Difficulty[] = ['易', '中', '難'];
@@ -27,6 +29,7 @@ const SelectionForm: React.FC<Props> = ({ onChange, isLoading, params }) => {
         {options.map((opt: string) => (
           <button
             key={opt}
+            type="button"
             disabled={isLoading}
             onClick={() => onSelect(opt)}
             className={`
@@ -49,15 +52,24 @@ const SelectionForm: React.FC<Props> = ({ onChange, isLoading, params }) => {
     <div className="bg-slate-50/50 p-6 rounded-[2.5rem] border border-slate-200/60 shadow-inner">
       <h2 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-3">
         <span className="w-8 h-8 bg-blue-600 text-white rounded-xl flex items-center justify-center text-sm shadow-md">1</span>
-        課程設定 (康軒版)
+        課程設定
       </h2>
       
+      <ButtonGroup 
+        label="出版社" 
+        options={publishers} 
+        current={params.publisher} 
+        onSelect={(v: Publisher) => handleChange('publisher', v)} 
+        columns={3}
+      />
+
       <div className="mb-8">
         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">
           學年度設定
         </label>
         <div className="flex items-center bg-white p-2 rounded-[2rem] border-2 border-slate-100 shadow-xl">
           <button 
+            type="button"
             onClick={() => handleChange('year', String(parseInt(params.year) - 1))}
             className="w-12 h-12 rounded-full hover:bg-slate-50 flex items-center justify-center text-slate-300 hover:text-blue-600 transition-colors"
           >
@@ -70,6 +82,7 @@ const SelectionForm: React.FC<Props> = ({ onChange, isLoading, params }) => {
           </div>
 
           <button 
+            type="button"
             onClick={() => handleChange('year', String(parseInt(params.year) + 1))}
             className="w-12 h-12 rounded-full hover:bg-slate-50 flex items-center justify-center text-slate-300 hover:text-blue-600 transition-colors"
           >
@@ -103,10 +116,31 @@ const SelectionForm: React.FC<Props> = ({ onChange, isLoading, params }) => {
         />
       </div>
 
+      {/* 單元輸入 */}
+      <div className="mb-8">
+        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">
+          單元名稱或目標
+        </label>
+        <textarea
+          value={params.unitTitle}
+          onChange={(e) => handleChange('unitTitle', e.target.value)}
+          placeholder="例如：10以內的加法、時鐘的認識、二位數加減..."
+          className="w-full bg-white p-4 rounded-2xl border-2 border-slate-100 font-bold text-slate-800 focus:border-blue-500 outline-none h-32 resize-none"
+        />
+      </div>
+
+      <button
+        onClick={onGenerate}
+        disabled={isLoading || !params.unitTitle.trim()}
+        className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black text-lg shadow-xl hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50"
+      >
+        {isLoading ? '正在編寫講義...' : '開始生成教材 ➔'}
+      </button>
+
       {isLoading && (
         <div className="flex flex-col items-center justify-center gap-3 pt-6 border-t border-slate-200 mt-6 animate-pulse">
           <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">
-            正在載入內建資料...
+            正在處理資料中...
           </span>
         </div>
       )}

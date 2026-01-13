@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { HandoutContent, SelectionParams, ThemeMode } from './types.ts';
 import DrawingCanvas from './DrawingCanvas.tsx';
 
@@ -8,6 +8,8 @@ interface Props {
   params: SelectionParams;
   theme: ThemeMode;
 }
+
+declare var html2pdf: any;
 
 export const renderMathContent = (text: any, colorCoding: boolean = true) => {
   if (text === null || text === undefined) return null;
@@ -18,21 +20,25 @@ export const renderMathContent = (text: any, colorCoding: boolean = true) => {
   
   if (hasSvg) {
     processed = processed.replace(/(<svg[\s\S]*?<\/svg>)/gi, (svgMatch) => {
+      // 確保 SVG 具備基本寬高與線條顏色
       let cleanedSvg = svgMatch
         .replace(/\bwidth=["'][^"']+["']/gi, '')
         .replace(/\bheight=["'][^"']+["']/gi, '');
 
+      // 如果 AI 忘了加顏色，強行注入黑色線條
+      if (!cleanedSvg.toLowerCase().includes('stroke=')) {
+        cleanedSvg = cleanedSvg.replace('<svg', '<svg stroke="#000000" fill="none" stroke-width="3"');
+      }
+      
+      // 強制確保有 viewBox
       if (!cleanedSvg.toLowerCase().includes('viewbox')) {
-        cleanedSvg = cleanedSvg.replace('<svg', '<svg viewBox="0 0 400 250"');
+        cleanedSvg = cleanedSvg.replace('<svg', '<svg viewBox="0 0 400 400"');
       }
 
       return `
-      <div class="svg-visual-container relative group my-8">
-        <div class="absolute inset-0 bg-slate-100/20 rounded-[3rem] -rotate-1 scale-[1.01] -z-10"></div>
-        <div class="w-full max-w-2xl mx-auto block bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm overflow-hidden flex items-center justify-center" style="min-height: 200px; max-height: 400px;">
-          <div class="w-full h-full flex items-center justify-center">
-            ${cleanedSvg}
-          </div>
+      <div class="svg-container my-10 bg-white border-4 border-slate-100 rounded-[3rem] p-10 flex items-center justify-center shadow-inner" style="min-height: 350px;">
+        <div class="w-full h-full max-w-[400px] max-h-[400px]">
+          ${cleanedSvg}
         </div>
       </div>
       `;
@@ -68,7 +74,7 @@ const ConceptCard: React.FC<{ text: string; index: number }> = ({ text, index })
   }
 
   return (
-    <div className="group relative bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all duration-300 mb-8 last:mb-0">
+    <div className="group relative bg-white p-10 rounded-[3rem] border-2 border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all duration-300 mb-8 last:mb-0">
       <div className="absolute top-0 left-0 w-2 h-full bg-blue-500 rounded-l-full group-hover:w-3 transition-all"></div>
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-3">
@@ -85,29 +91,8 @@ const ConceptCard: React.FC<{ text: string; index: number }> = ({ text, index })
   );
 };
 
-const StepContent: React.FC<{ text: string }> = ({ text }) => {
-  const splitIndex = text.indexOf('。');
-  if (splitIndex !== -1) {
-    const title = text.substring(0, splitIndex + 1);
-    let body = text.substring(splitIndex + 1).trim();
-    body = body.replace(/^[-\s]+/, '');
-    return (
-      <div className="flex flex-col gap-3">
-        <div className="text-4xl font-black text-slate-900 tracking-tight leading-snug">
-          {renderMathContent(title)}
-        </div>
-        {body && (
-          <div className="text-3xl font-bold text-slate-600 leading-relaxed pt-1 border-l-4 border-slate-100 pl-6">
-            {renderMathContent(body)}
-          </div>
-        )}
-      </div>
-    );
-  }
-  return <div className="text-3xl font-bold text-slate-700 leading-relaxed">{renderMathContent(text)}</div>;
-};
-
 const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [visibleCanvas, setVisibleCanvas] = useState<Record<string, boolean>>({});
   const [activeSteps, setActiveSteps] = useState<Record<number, number>>({});
   const [showGlobalNotes, setShowGlobalNotes] = useState(false);
@@ -122,37 +107,52 @@ const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
 
   if (!content) return <div className="p-20 text-center font-bold text-slate-400">講義內容載入中...</div>;
 
+  const handleExportPDF = () => {
+    const opt = {
+      margin: 10,
+      filename: `講義_${content.title || '無標題'}.pdf`,
+      image: { type: 'jpeg', quality: 1.0 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    html2pdf().set(opt).from(containerRef.current).save();
+  };
+
   return (
-    <div className="bg-white rounded-[4rem] shadow-2xl overflow-hidden print:shadow-none print:rounded-none border border-slate-100">
-      <div className="bg-[#0f172a] p-12 md:p-16 flex flex-col md:flex-row justify-between items-center text-white no-print gap-8 border-b-[12px] border-blue-600">
-        <div className="text-center md:text-left">
-          <h1 className="text-6xl md:text-7xl font-black mb-8 tracking-tighter italic drop-shadow-lg">
-            {content.title || '數學教學講義'}
-          </h1>
-          <div className="flex flex-wrap gap-4 justify-center md:justify-start">
-            <span className="bg-blue-600 px-6 py-2.5 rounded-2xl font-black text-sm shadow-lg border border-blue-400 uppercase tracking-widest">
-              {params.grade} {params.semester}學期
-            </span>
-            <span className="bg-slate-800 px-6 py-2.5 rounded-2xl font-black text-sm border border-slate-600 shadow-lg uppercase tracking-widest">
-              {params.publisher}版
-            </span>
-          </div>
-        </div>
-        <div className="flex flex-col gap-4 min-w-[200px]">
-          <button 
-            onClick={() => setShowGlobalNotes(!showGlobalNotes)} 
-            className={`w-full py-4 px-6 rounded-2xl font-black text-sm transition-all shadow-xl active:scale-95 flex items-center justify-center gap-3 ${showGlobalNotes ? 'bg-rose-500 text-white' : 'bg-white text-slate-900'}`}
-          >
-            {showGlobalNotes ? '✕ 關閉全頁筆記' : '✏️ 開啟全頁筆記'}
-          </button>
+    <div ref={containerRef} className="bg-white rounded-[4rem] shadow-2xl overflow-hidden print:shadow-none print:rounded-none border border-slate-100">
+      <style>{`
+        .svg-container svg { width: 100%; height: 100%; display: block; }
+        .svg-container text { font-family: 'Noto Sans TC', sans-serif; font-weight: 900; }
+        @media print { .no-print { display: none !important; } }
+      `}</style>
+
+      <div className="no-print p-8 border-b flex justify-end gap-4 sticky top-0 bg-white/95 backdrop-blur z-50 shadow-sm">
+        <button onClick={handleExportPDF} className="bg-rose-500 text-white px-8 py-3 rounded-2xl font-black shadow-lg hover:bg-rose-600 active:scale-95 transition-all flex items-center gap-2">
+          <span>📂</span> 下載 PDF
+        </button>
+        <button onClick={() => window.print()} className="bg-slate-800 text-white px-8 py-3 rounded-2xl font-black shadow-lg active:scale-95 transition-all flex items-center gap-2">
+          <span>🖨️</span> 列印講義
+        </button>
+      </div>
+
+      <div className="bg-[#0f172a] p-16 md:p-20 text-white border-b-[12px] border-blue-600">
+        <h1 className="text-6xl md:text-7xl font-black mb-8 tracking-tighter italic drop-shadow-lg">
+          {renderMathContent(content.title || '數學教學講義', false)}
+        </h1>
+        <div className="flex flex-wrap gap-4">
+          <span className="bg-blue-600 px-6 py-2 rounded-xl font-black text-sm uppercase tracking-widest border border-blue-400">
+            {params.grade} {params.semester}學期
+          </span>
+          <span className="bg-slate-800 px-6 py-2 rounded-xl font-black text-sm uppercase tracking-widest border border-slate-600">
+            {params.publisher}版
+          </span>
         </div>
       </div>
 
-      <div className="p-10 md:p-24 space-y-32">
-        {/* 核心觀念 */}
-        <section className="relative">
+      <div className="p-12 md:p-24 space-y-32">
+        <section>
           <div className="flex items-center gap-6 mb-16">
-            <div className="w-4 h-14 bg-blue-600 rounded-full shadow-[0_0_15px_rgba(37,99,235,0.4)]"></div>
+            <div className="w-4 h-14 bg-blue-600 rounded-full shadow-lg shadow-blue-200"></div>
             <h2 className="text-slate-900 font-black text-5xl tracking-tighter italic">核心觀念</h2>
           </div>
           
@@ -163,27 +163,28 @@ const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
           </div>
 
           {content.visualAidSvg && (
-            <div className="mt-16 animate-in fade-in slide-in-from-bottom-8 duration-1000">
+            <div className="mt-16 animate-in fade-in slide-in-from-bottom-8 duration-700">
               {renderMathContent(content.visualAidSvg)}
             </div>
           )}
         </section>
 
-        {/* 實戰範例 */}
         <section className="space-y-48">
           <div className="h-[2px] bg-slate-100 w-full"></div>
           {(content.examples || []).map((ex, i) => (
             <div key={i} className="relative page-break-inside-avoid">
-              <div className="flex items-center gap-6 mb-12">
-                <span className="bg-slate-900 text-white w-16 h-16 rounded-[1.8rem] flex items-center justify-center font-black text-4xl shadow-2xl transform -rotate-3 border-4 border-slate-800">
-                  {i+1}
-                </span>
-                <h3 className="text-3xl font-black text-slate-300 uppercase tracking-widest italic">Example</h3>
+              <div className="flex items-center justify-between mb-12">
+                <div className="flex items-center gap-6">
+                  <span className="bg-slate-900 text-white w-16 h-16 rounded-[1.8rem] flex items-center justify-center font-black text-4xl shadow-xl transform -rotate-3 border-4 border-slate-800">
+                    {i+1}
+                  </span>
+                  <h3 className="text-3xl font-black text-slate-300 uppercase tracking-widest italic">Example</h3>
+                </div>
                 <button 
                   onClick={() => setVisibleCanvas(p => ({...p, [`ex-${i}`]: !p[`ex-${i}`]}))} 
-                  className="no-print ml-auto text-sm font-black text-slate-400 hover:text-blue-600 transition-all flex items-center gap-2 px-6 py-3.5 bg-white rounded-2xl border-2 border-slate-100 shadow-sm hover:border-blue-200"
+                  className="no-print text-sm font-black text-slate-400 hover:text-blue-600 transition-all flex items-center gap-2 px-6 py-3 bg-white rounded-2xl border-2 border-slate-100 shadow-sm hover:border-blue-200"
                 >
-                  {visibleCanvas[`ex-${i}`] ? '✕ 關閉手寫板' : '✎ 開啟計算區'}
+                  {visibleCanvas[`ex-${i}`] ? '✕ 關閉寫字板' : '✎ 開啟計算區'}
                 </button>
               </div>
               
@@ -193,29 +194,29 @@ const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
 
               {visibleCanvas[`ex-${i}`] && (
                 <div className="mb-16 no-print animate-in zoom-in-95 duration-300">
-                  <DrawingCanvas id={`ex-${i}`} height={550} />
+                  <DrawingCanvas id={`ex-${i}`} height={500} />
                 </div>
               )}
 
               {ex.visualAidSvg && (
-                <div className="mb-14">
+                <div className="mb-16">
                   {renderMathContent(ex.visualAidSvg)}
                 </div>
               )}
 
-              <div className="space-y-16 bg-blue-50/30 p-12 md:p-16 rounded-[4.5rem] border-4 border-white shadow-[inset_0_4px_12px_rgba(0,0,0,0.02)] relative">
+              <div className="space-y-16 bg-blue-50/30 p-12 md:p-16 rounded-[4rem] border-4 border-white shadow-inner relative">
                 {(ex.stepByStep || []).map((s, si) => (
                   <div 
                     key={si} 
                     className={`flex gap-10 items-start transition-all duration-700 ${
-                      si < (activeSteps[i] || 0) || typeof window !== 'undefined' && window.location.search.includes('print')
+                      si < (activeSteps[i] || 0) || (typeof window !== 'undefined' && window.location.search.includes('print'))
                         ? 'opacity-100 translate-y-0' 
                         : 'opacity-0 translate-y-8 h-0 overflow-hidden'
                     }`}
                   >
-                    <span className="w-16 h-16 rounded-2xl bg-white border-4 border-blue-100 flex items-center justify-center font-black text-blue-600 shrink-0 shadow-sm text-3xl">{si+1}</span>
-                    <div className="flex-1 pt-1">
-                      <StepContent text={s} />
+                    <span className="w-14 h-14 rounded-2xl bg-white border-4 border-blue-100 flex items-center justify-center font-black text-blue-600 shrink-0 shadow-sm text-2xl">{si+1}</span>
+                    <div className="text-3xl font-bold text-slate-700 leading-relaxed flex-1 pt-2">
+                      {renderMathContent(s)}
                     </div>
                   </div>
                 ))}
@@ -243,29 +244,6 @@ const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
             </div>
           ))}
         </section>
-
-        {/* 老師補充與全頁筆記區 */}
-        {(showGlobalNotes || (typeof window !== 'undefined' && window.location.search.includes('print'))) && (
-          <section className="mt-48 pt-32 border-t-8 border-slate-100 page-break-before-always">
-             <div className="flex items-center gap-6 mb-16">
-              <div className="w-4 h-14 bg-rose-500 rounded-full shadow-[0_0_15px_rgba(244,63,94,0.4)]"></div>
-              <h2 className="text-slate-900 font-black text-5xl tracking-tighter italic">老師補充與筆記區</h2>
-            </div>
-            <div className="p-8 bg-white border-4 border-dashed border-slate-200 rounded-[3rem]">
-              <DrawingCanvas id="global-handout-notes" height={800} />
-            </div>
-          </section>
-        )}
-      </div>
-
-      <div className="p-12 border-t border-slate-100 flex justify-center no-print bg-slate-50">
-        <button 
-          onClick={() => window.print()} 
-          className="group bg-slate-900 text-white hover:bg-black px-16 py-6 rounded-[2.5rem] font-black transition-all shadow-2xl active:scale-95 text-3xl flex items-center gap-6"
-        >
-          <span className="group-hover:animate-bounce">🖨️</span>
-          <span>立即列印講義</span>
-        </button>
       </div>
     </div>
   );

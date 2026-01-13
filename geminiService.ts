@@ -1,8 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { SelectionParams, Chapter, HandoutContent, HomeworkConfig, HomeworkContent } from './types.ts';
-import { getLocalChapters } from './curriculumData.ts';
-import { PRESET_HANDOUTS } from './handoutData.ts';
+import { SelectionParams, HandoutContent, HomeworkConfig, HomeworkContent } from './types.ts';
 
 const robustExtractJSON = (text: string) => {
   if (!text) return null;
@@ -23,15 +21,18 @@ const robustExtractJSON = (text: string) => {
   try {
     return JSON.parse(jsonStr);
   } catch (e) {
-    try {
-      return JSON.parse(jsonStr.replace(/\n/g, ' ').replace(/\r/g, ' '));
-    } catch {
-      return null;
-    }
+    return null;
   }
 };
 
-const SYSTEM_PROMPT = `你是一位專業的台灣國小資源班特教老師。你的目標是為學生生成「微步化（小步子）」教材。嚴禁使用 $ 符號。圖解使用 SVG。`;
+const SYSTEM_PROMPT = `你是一位專業的台灣國小資源班特教老師。
+請為學生生成「微步化（小步子）」教材。
+
+嚴格規則：
+1. 嚴禁使用 $ 符號，請使用繁體中文。
+2. 每個例題必須提供視覺圖解 visualAidSvg (SVG 格式)。
+3. SVG 規則：黑色線條 (stroke="#000000")，粗細 3px，viewBox="0 0 400 400"。
+4. 如果是時鐘題目，必須畫出圓、12個數字、長短針。`;
 
 const HANDOUT_SCHEMA = {
   type: Type.OBJECT,
@@ -49,58 +50,24 @@ const HANDOUT_SCHEMA = {
           answer: { type: Type.STRING },
           visualAidSvg: { type: Type.STRING }
         },
-        required: ["question", "stepByStep", "answer"]
+        required: ["question", "stepByStep", "answer", "visualAidSvg"]
       }
     },
     tips: { type: Type.STRING },
     checklist: { type: Type.ARRAY, items: { type: Type.STRING } }
   },
-  required: ["title", "concept", "examples", "tips", "checklist"]
+  required: ["title", "concept", "examples", "tips", "checklist", "visualAidSvg"]
 };
 
-export const isPresetAvailable = (params: SelectionParams, chapter: string, sub: string): boolean => {
-  const presetKey = `${params.publisher}-${params.grade}-${params.semester}-${chapter}-${sub}`;
-  return !!PRESET_HANDOUTS[presetKey];
-};
-
-export const fetchChapters = async (params: SelectionParams): Promise<Chapter[]> => {
-  // 優先回傳本地資料庫
-  const local = getLocalChapters(params.publisher, params.grade, params.semester);
-  if (local.length > 0) return local;
-
-  // 若無本地資料，才嘗試呼叫 AI
+export const generateHandout = async (params: SelectionParams): Promise<HandoutContent> => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey) return [];
-  
-  const ai = new GoogleGenAI({ apiKey: apiKey as string });
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `列出台灣「${params.publisher}」${params.grade}${params.semester}數學課程目錄。格式為 JSON。`,
-      config: { responseMimeType: "application/json" }
-    });
-    return robustExtractJSON(response.text) || [];
-  } catch (e) {
-    return [];
-  }
-};
-
-export const generateHandoutFromText = async (params: SelectionParams, chapter: string, sub: string): Promise<HandoutContent> => {
-  const presetKey = `${params.publisher}-${params.grade}-${params.semester}-${chapter}-${sub}`;
-  if (PRESET_HANDOUTS[presetKey]) {
-    return PRESET_HANDOUTS[presetKey];
-  }
-
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("此單元暫無內建講義且未設定 API 金鑰。請更換有內建資料的單元（如：五年級上學期-找出因數）。");
-  }
+  if (!apiKey) throw new Error("請設定 API 金鑰。");
 
   const ai = new GoogleGenAI({ apiKey: apiKey as string });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
-      contents: `為資源班學生製作講義：單元「${chapter}-${sub}」。難度：${params.difficulty}。請拆解步驟並提供視覺化圖解。`,
+      contents: `為國小「${params.grade}」資源班學生製作數學講義。單元名稱：${params.unitTitle}。難度：${params.difficulty}。請用微步化拆解步驟並提供大量 SVG 圖解。`,
       config: { 
         systemInstruction: SYSTEM_PROMPT,
         responseMimeType: "application/json",
@@ -108,24 +75,20 @@ export const generateHandoutFromText = async (params: SelectionParams, chapter: 
       }
     });
     const data = robustExtractJSON(response.text);
-    if (!data) throw new Error("AI 回傳的內容格式不正確");
+    if (!data) throw new Error("AI 回傳失敗");
     return data;
   } catch (e: any) {
-    throw new Error(e.message || "生成講義時發生 API 錯誤");
+    throw new Error(e.message || "生成失敗");
   }
 };
 
-export const generateHomework = async (params: SelectionParams, chapter: string, sub: string, config: HomeworkConfig): Promise<HomeworkContent> => {
+export const generateHomework = async (params: SelectionParams, config: HomeworkConfig): Promise<HomeworkContent> => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("目前暫無內建練習卷，且未設定 API 金鑰進行 AI 生成。");
-  }
-
   const ai = new GoogleGenAI({ apiKey: apiKey as string });
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
-      contents: `製作「${chapter}-${sub}」練習卷。計算題 ${config.calculationCount} 題，應用題 ${config.wordProblemCount} 題。`,
+      contents: `針對單元「${params.unitTitle}」製作練習卷。年級：${params.grade}。計算題 ${config.calculationCount} 題，應用題 ${config.wordProblemCount} 題。`,
       config: { 
         systemInstruction: SYSTEM_PROMPT, 
         responseMimeType: "application/json" 
@@ -135,6 +98,6 @@ export const generateHomework = async (params: SelectionParams, chapter: string,
     if (!data) throw new Error("練習卷生成失敗");
     return data;
   } catch (e: any) {
-    throw new Error(e.message || "生成練習卷時發生錯誤");
+    throw new Error("API 錯誤");
   }
 };

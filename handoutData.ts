@@ -1,5 +1,5 @@
 
-import { HandoutContent } from './types.ts';
+import { HandoutContent, HomeworkContent } from './types.ts';
 
 /**
  * 內建高品質講義資料庫
@@ -42,25 +42,20 @@ export const PRESET_HANDOUTS: Record<string, HandoutContent> = {
     ],
     tips: '提示：用「乘法表」倒著想，誰乘誰會等於這個數？',
     checklist: ['我有沒有漏掉 1 和它自己？', '中間還有數字可以整除嗎？']
-  },
-  '康軒-四年級-上-1. 一億以內的數-十萬位與百萬位': {
-    title: '一億以內的數：認識十萬與百萬',
-    concept: '重點一：十個一萬是十萬。重點二：十個十萬是一百萬。重點三：位值順序為：...、百萬位、十萬位、萬位、千位、百位、十位、個位。',
-    visualAidSvg: '<svg viewBox="0 0 400 120"><rect x="10" y="40" width="80" height="50" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/><text x="50" y="75" text-anchor="middle" font-weight="bold" font-size="12">百萬位</text><rect x="110" y="40" width="80" height="50" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/><text x="150" y="75" text-anchor="middle" font-weight="bold" font-size="12">十萬位</text><rect x="210" y="40" width="80" height="50" fill="#f0fdf4" stroke="#22c55e" stroke-width="2"/><text x="250" y="75" text-anchor="middle" font-weight="bold" font-size="12">萬位</text></svg>',
-    examples: [
-      {
-        question: '3個百萬、5個十萬和2個萬是多少？',
-        stepByStep: [
-          '步驟 1：找出百萬位，寫下 3。',
-          '步驟 2：找出十萬位，接著寫下 5。',
-          '步驟 3：找出萬位，寫下 2。',
-          '步驟 4：萬位後面還有四位(千、百、十、個)，所以補四個 0。'
-        ],
-        answer: '3520000'
-      }
+  }
+};
+
+/**
+ * 內建高品質練習卷資料庫
+ */
+export const PRESET_HOMEWORKS: Record<string, HomeworkContent> = {
+  '康軒-一年級-上-1. 10以內的數-數到5': {
+    title: '「數到 5」隨堂練習卷',
+    questions: [
+      { type: '計算題', content: '數數看，這裡有幾個圓圈？ (●●●●)', hint: '用手指頭指著一個一個數。', answer: '4 個' },
+      { type: '計算題', content: '數數看，盤子裡有幾個草莓？ (●●)', hint: '最後數到的數字就是答案。', answer: '2 個' },
+      { type: '應用題', content: '小華有 3 顆糖果，再拿 1 顆，現在有幾顆？', hint: '3 往後數一個。', answer: '4 顆' }
     ],
-    exercises: [],
-    tips: '提示：每四位數畫一個小撇記號，可以幫助你分清楚「萬」跟「億」喔！',
-    checklist: ['我有沒有對齊位值？', '零的個數數對了嗎？']
+    checklist: ['我有沒有數錯？', '數字有沒有寫對？']
   }
 };

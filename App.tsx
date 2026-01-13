@@ -1,14 +1,12 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { BookOpen, ArrowLeft, Layers, FileText, AlertCircle, RefreshCw, ChevronLeft, Menu, Wand2, Search } from 'lucide-react';
-import { SelectionParams, Chapter, HandoutContent, HomeworkContent, HomeworkConfig } from './types.ts';
-import { fetchChapters, generateHandoutFromText, generateHomework, isPresetAvailable } from './geminiService.ts';
-import SelectionForm from './SelectionForm.tsx';
-import ChapterSelector from './ChapterSelector.tsx';
-import ManualUnitInput from './ManualUnitInput.tsx';
-import HandoutViewer from './HandoutViewer.tsx';
-import HomeworkViewer from './HomeworkViewer.tsx';
-import HomeworkConfigSection from './HomeworkConfigSection.tsx';
+import React, { useState, useCallback } from 'react';
+import { BookOpen, ArrowLeft, Layers, FileText, AlertCircle, ChevronLeft, Menu, Wand2 } from 'lucide-react';
+import { SelectionParams, HandoutContent, HomeworkContent, HomeworkConfig } from './types.ts';
+import { generateHandout, generateHomework } from './geminiService.ts';
+import SelectionForm from './components/SelectionForm.tsx';
+import HandoutViewer from './components/HandoutViewer.tsx';
+import HomeworkViewer from './components/HomeworkViewer.tsx';
+import HomeworkConfigSection from './components/HomeworkConfigSection.tsx';
 
 const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -17,74 +15,52 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
+  // Initialize with all required fields for SelectionParams
   const [params, setParams] = useState<SelectionParams>({
-    year: '114',
     publisher: '康軒',
-    semester: '上',
+    year: '113',
     grade: '一年級',
+    semester: '上',
     difficulty: '中',
-    showBopomofo: false
+    unitTitle: ''
   });
   
-  const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [currentChapter, setCurrentChapter] = useState<{ title: string; sub: string } | null>(null);
   const [handout, setHandout] = useState<HandoutContent | null>(null);
   const [homework, setHomework] = useState<HomeworkContent | null>(null);
 
-  // 初始化載入預設目錄
-  useEffect(() => {
-    handleSyncChapters();
-  }, [params.grade, params.semester]);
-
-  const handleSyncChapters = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchChapters(params);
-      setChapters(data);
-    } catch (e: any) {
-      setError(`[目錄載入失敗] ${e.message}`);
-    } finally {
-      setLoading(false);
+  const handleStartGenerate = useCallback(async () => {
+    if (!params.unitTitle.trim()) {
+      setError("請輸入單元名稱！");
+      return;
     }
-  };
-
-  const handleSelectUnit = useCallback(async (chapter: string, sub: string) => {
-    setCurrentChapter({ title: chapter, sub });
+    setLoading(true);
     setShowSettings(false);
     setError(null);
-    
-    // 如果是內建講義，則不需要顯示載入動畫（秒開）
-    const isPreset = isPresetAvailable(params, chapter, sub);
-    if (!isPreset) {
-      setLoading(true);
-    }
-    
     try {
-      const data = await generateHandoutFromText(params, chapter, sub);
+      const data = await generateHandout(params);
       setHandout(data);
       setView('handout');
     } catch (err: any) {
-      setError(`[講義生成失敗] ${err.message}`);
+      setError(err.message);
+      setShowSettings(true);
     } finally {
       setLoading(false);
     }
   }, [params]);
 
   const handleGenerateHomework = useCallback(async (config: HomeworkConfig) => {
-    if (!currentChapter) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await generateHomework(params, currentChapter.title, currentChapter.sub, config);
+      const data = await generateHomework(params, config);
       setHomework(data);
       setView('homework');
     } catch (err: any) {
-      setError(`[練習卷製作失敗] ${err.message}`);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [params, currentChapter]);
+  }, [params]);
 
   return (
     <div className="min-h-screen flex bg-slate-50 font-sans selection:bg-blue-100">
@@ -102,18 +78,21 @@ const App: React.FC = () => {
 
           {showSettings ? (
             <div className="space-y-6">
-              <SelectionForm params={params} onChange={setParams} isLoading={loading} />
-              <ChapterSelector chapters={chapters} onSelect={handleSelectUnit} isLoading={loading} />
-              <ManualUnitInput onGenerate={handleSelectUnit} isLoading={loading} />
+              <SelectionForm 
+                params={params} 
+                onChange={setParams} 
+                onGenerate={handleStartGenerate}
+                isLoading={loading} 
+              />
             </div>
           ) : (
             <div className="space-y-6">
               <button onClick={() => { setShowSettings(true); setView('welcome'); }} className="flex items-center gap-2 text-slate-400 font-black hover:text-blue-600 transition-colors">
-                <ArrowLeft size={20} /> 返回設定
+                <ArrowLeft size={20} /> 修改單元設定
               </button>
               <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-8 rounded-[2.5rem] text-white shadow-xl">
                 <div className="text-[10px] font-black opacity-60 uppercase mb-2 tracking-widest">目前單元</div>
-                <div className="text-2xl font-black leading-tight">{currentChapter?.sub}</div>
+                <div className="text-2xl font-black leading-tight">{params.unitTitle}</div>
               </div>
               <nav className="space-y-3">
                 <button onClick={() => setView('handout')} className={`w-full p-6 rounded-3xl font-black flex items-center gap-4 transition-all ${view === 'handout' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-400'}`}><Layers size={24} /> 教學講義</button>
@@ -134,8 +113,8 @@ const App: React.FC = () => {
         {loading && (
           <div className="h-full flex flex-col items-center justify-center text-center">
             <div className="w-20 h-20 border-8 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-8"></div>
-            <h2 className="text-4xl font-black text-slate-900 mb-2 italic">正在處理教學內容...</h2>
-            <p className="text-slate-400 font-bold italic">初次生成可能需要較長時間</p>
+            <h2 className="text-4xl font-black text-slate-900 mb-2 italic">正在生成教學內容...</h2>
+            <p className="text-slate-400 font-bold italic">這大約需要 15-30 秒</p>
           </div>
         )}
 
@@ -143,12 +122,10 @@ const App: React.FC = () => {
           <div className="h-full flex flex-col items-center justify-center max-w-2xl mx-auto">
             <div className="bg-white p-12 rounded-[4rem] border-4 border-rose-100 shadow-2xl text-center w-full">
               <AlertCircle size={80} className="text-rose-500 mx-auto mb-8" />
-              <h2 className="text-4xl font-black text-slate-900 mb-4">操作提示</h2>
-              <div className="bg-rose-50 p-6 rounded-3xl text-rose-700 font-mono text-sm mb-10 text-left overflow-auto max-h-40 leading-relaxed">
-                {error}
-              </div>
-              <button onClick={() => setError(null)} className="bg-slate-900 text-white px-10 py-5 rounded-[2rem] font-black flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl">
-                返回
+              <h2 className="text-4xl font-black text-slate-900 mb-4">發生錯誤</h2>
+              <p className="text-slate-600 font-bold mb-10">{error}</p>
+              <button onClick={() => setError(null)} className="bg-slate-900 text-white px-10 py-5 rounded-[2rem] font-black hover:bg-black transition-all shadow-xl">
+                重新嘗試
               </button>
             </div>
           </div>
@@ -161,7 +138,7 @@ const App: React.FC = () => {
             </div>
             <h2 className="text-6xl font-black text-slate-900 mb-6 italic tracking-tighter">歡迎使用特教數學助手</h2>
             <p className="text-slate-400 font-bold text-2xl max-w-xl leading-relaxed">
-              請從左側選單選擇年級與單元，系統將自動載入內建講義或為您生成新內容。
+              請在左側輸入年級與單元名稱，AI 將自動為您編寫微步化教材。
             </p>
           </div>
         )}
