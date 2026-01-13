@@ -13,30 +13,39 @@ declare var html2pdf: any;
 
 export const renderMathContent = (text: any, colorCoding: boolean = true) => {
   if (text === null || text === undefined) return null;
-  const contentStr = typeof text === 'string' ? text : String(text);
+  let contentStr = typeof text === 'string' ? text : String(text);
   
+  // 1. 強制移除所有 $ 符號，避免 AI 產出的 LaTeX 影響閱讀
+  contentStr = contentStr.replace(/\$/g, '');
+
   let processed = contentStr.replace(/\\n/g, '<br/>').trim();
   const hasSvg = /<svg[\s\S]*?<\/svg>/i.test(processed);
   
   if (hasSvg) {
     processed = processed.replace(/(<svg[\s\S]*?<\/svg>)/gi, (svgMatch) => {
-      // 確保 SVG 具備基本寬高與線條顏色
+      // 2. 處理 SVG 遮擋問題：確保 rect, circle 等圖形不具備遮擋文字的填充色
       let cleanedSvg = svgMatch
         .replace(/\bwidth=["'][^"']+["']/gi, '')
         .replace(/\bheight=["'][^"']+["']/gi, '');
 
-      // 如果 AI 忘了加顏色，強行注入黑色線條
+      // 強制注入全域線條樣式並移除所有矩形的填充色
       if (!cleanedSvg.toLowerCase().includes('stroke=')) {
         cleanedSvg = cleanedSvg.replace('<svg', '<svg stroke="#000000" fill="none" stroke-width="3"');
       }
       
+      // 修復：強制將所有 <rect> 的 fill 設定為 none，避免框住數字時數字看不見
+      cleanedSvg = cleanedSvg.replace(/<rect([^>]*)fill=["'][^"']+["']([^>]*)>/gi, '<rect$1fill="none"$2>');
+      if (!cleanedSvg.includes('fill="none"') && cleanedSvg.includes('<rect')) {
+         cleanedSvg = cleanedSvg.replace('<rect', '<rect fill="none"');
+      }
+
       // 強制確保有 viewBox
       if (!cleanedSvg.toLowerCase().includes('viewbox')) {
         cleanedSvg = cleanedSvg.replace('<svg', '<svg viewBox="0 0 400 400"');
       }
 
       return `
-      <div class="svg-container my-10 bg-white border-4 border-slate-100 rounded-[3rem] p-10 flex items-center justify-center shadow-inner" style="min-height: 350px;">
+      <div class="svg-container my-10 bg-white border-4 border-slate-50 rounded-[3rem] p-10 flex items-center justify-center shadow-inner" style="min-height: 350px;">
         <div class="w-full h-full max-w-[400px] max-h-[400px]">
           ${cleanedSvg}
         </div>
@@ -95,7 +104,6 @@ const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [visibleCanvas, setVisibleCanvas] = useState<Record<string, boolean>>({});
   const [activeSteps, setActiveSteps] = useState<Record<number, number>>({});
-  const [showGlobalNotes, setShowGlobalNotes] = useState(false);
   
   const structuredConcepts = useMemo(() => {
     if (!content.concept) return [];
@@ -141,10 +149,10 @@ const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
         </h1>
         <div className="flex flex-wrap gap-4">
           <span className="bg-blue-600 px-6 py-2 rounded-xl font-black text-sm uppercase tracking-widest border border-blue-400">
-            {params.grade} {params.semester}學期
+            {params.grade} 資源班講義
           </span>
           <span className="bg-slate-800 px-6 py-2 rounded-xl font-black text-sm uppercase tracking-widest border border-slate-600">
-            {params.publisher}版
+            {params.difficulty} 難度
           </span>
         </div>
       </div>

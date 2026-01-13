@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
-import { HandoutContent, SelectionParams, ThemeMode } from '../types';
-import DrawingCanvas from './DrawingCanvas';
+import { HandoutContent, SelectionParams, ThemeMode } from '../types.ts';
+import DrawingCanvas from './DrawingCanvas.tsx';
 
 interface Props {
   content: HandoutContent;
@@ -11,94 +11,113 @@ interface Props {
 
 declare var html2pdf: any;
 
-export const renderMathContent = (text: string, colorCoding: boolean = true) => {
-  if (!text) return null;
+/**
+ * 通用數學內容渲染函數
+ * 具備 $ 符號過濾與 SVG 透明化處理
+ */
+export const renderMathContent = (text: any, colorCoding: boolean = true) => {
+  if (text === null || text === undefined) return null;
+  let contentStr = typeof text === 'string' ? text : String(text);
   
-  let processed = text.replace(/\\n/g, '').trim();
-  const hasTags = /<[a-z][\s\S]*>/i.test(processed);
+  // 【最核心修復】：在所有邏輯開始前，強制移除所有 $ 符號
+  contentStr = contentStr.replace(/\$/g, '');
 
-  if (hasTags) {
+  let processed = contentStr.replace(/\\n/g, '<br/>').trim();
+  const hasSvg = /<svg[\s\S]*?<\/svg>/i.test(processed);
+  
+  if (hasSvg) {
+    processed = processed.replace(/(<svg[\s\S]*?<\/svg>)/gi, (svgMatch) => {
+      let cleanedSvg = svgMatch
+        .replace(/\bwidth=["'][^"']+["']/gi, '')
+        .replace(/\bheight=["'][^"']+["']/gi, '');
+
+      // 強制將所有圖形元素的填充設為 none，確保不遮擋文字
+      cleanedSvg = cleanedSvg.replace(/<rect([^>]*)fill=["'][^"']+["']([^>]*)>/gi, '<rect$1fill="none"$2>');
+      cleanedSvg = cleanedSvg.replace(/<circle([^>]*)fill=["'][^"']+["']([^>]*)>/gi, '<circle$1fill="none"$2>');
+      cleanedSvg = cleanedSvg.replace(/<ellipse([^>]*)fill=["'][^"']+["']([^>]*)>/gi, '<ellipse$1fill="none"$2>');
+      cleanedSvg = cleanedSvg.replace(/<path([^>]*)fill=["'][^"']+["']([^>]*)>/gi, '<path$1fill="none"$2>');
+
+      // 如果標籤內完全沒有 fill 屬性，則在標籤開頭注入 fill="none"
+      cleanedSvg = cleanedSvg.replace(/<(rect|circle|ellipse|path)(?![^>]*fill=)([^>]*)>/gi, '<$1 fill="none"$2>');
+
+      // 強制確保有 viewBox
+      if (!cleanedSvg.toLowerCase().includes('viewbox')) {
+        cleanedSvg = cleanedSvg.replace('<svg', '<svg viewBox="0 0 400 400"');
+      }
+
+      return `
+      <div class="svg-container my-8 bg-white border-2 border-slate-50 rounded-[2.5rem] p-6 flex items-center justify-center shadow-inner" style="min-height: 300px;">
+        <div class="w-full h-full max-w-[380px] max-h-[380px]">
+          ${cleanedSvg}
+        </div>
+      </div>
+      `;
+    });
+
     if (colorCoding) {
+      // 為數學符號加上顏色（避開 HTML 標籤內部的內容）
       processed = processed.replace(/(<[^>]+>)|([\+\-×÷=><])/gi, (match, tag, symbol) => {
         if (tag) return tag;
-        return `<span class="text-rose-600 font-black mx-1">${symbol}</span>`;
+        return `<span class="text-rose-600 font-black mx-1 inline-block">${symbol}</span>`;
       });
     }
-    processed = processed.replace(/<svg[\s\S]*?<\/svg>/gi, (svgMatch) => {
-      return `<div class="visual-aid-container">${svgMatch}</div>`;
+
+    return <span className="inline-block w-full align-middle" dangerouslySetInnerHTML={{ __html: processed }} />;
+  }
+
+  if (colorCoding) {
+    processed = processed.replace(/([\+\-×÷=><])/gi, (symbol) => {
+      return `<span class="text-rose-600 font-black mx-1 inline-block">${symbol}</span>`;
     });
-    return <span className="inline-block w-full" dangerouslySetInnerHTML={{ __html: processed }} />;
   }
 
-  const fracRegex = /(\d+)\s*又\s*(\d+)\/(\d+)|(\d+)\/(\d+)/g;
-  const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match;
+  return <span className="math-text leading-relaxed align-middle font-bold" dangerouslySetInnerHTML={{ __html: processed }} />;
+};
 
-  const highlight = (s: string) => {
-    if (!colorCoding) return s;
-    const res: React.ReactNode[] = [];
-    let l = 0;
-    const reg = /([\+\-×÷=><])/g;
-    let m;
-    while ((m = reg.exec(s)) !== null) {
-      if (m.index > l) res.push(s.substring(l, m.index));
-      res.push(<span key={m.index} className="text-rose-600 font-black mx-1">${m[1]}</span>);
-      l = reg.lastIndex;
-    }
-    if (l < s.length) res.push(s.substring(l));
-    return res;
-  };
+const ConceptCard: React.FC<{ text: string; index: number }> = ({ text, index }) => {
+  const splitIdx = text.indexOf('：') !== -1 ? text.indexOf('：') : text.indexOf(':');
+  let label = `重點 ${index + 1}`;
+  let content = text;
 
-  while ((match = fracRegex.exec(processed)) !== null) {
-    if (match.index > lastIndex) parts.push(highlight(processed.substring(lastIndex, match.index)));
-    if (match[1]) {
-      parts.push(
-        <span key={match.index} className="fraction-container">
-          <span className="flex items-center">
-            <span className="fraction-whole">{match[1]}</span>
-            <span className="flex flex-col items-center">
-              <span className="fraction-num">{match[2]}</span>
-              <span className="fraction-den">{match[3]}</span>
-            </span>
+  if (splitIdx !== -1 && splitIdx < 15) {
+    label = text.substring(0, splitIdx).trim();
+    content = text.substring(splitIdx + 1).trim();
+  }
+
+  return (
+    <div className="group relative bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm hover:shadow-md transition-all mb-6 last:mb-0">
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-3">
+          <span className="bg-blue-600 text-white px-4 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm">
+            {label}
           </span>
-        </span>
-      );
-    } else {
-      parts.push(
-        <span key={match.index} className="fraction-container">
-          <span className="fraction-num">{match[4]}</span>
-          <span className="fraction-den">{match[5]}</span>
-        </span>
-      );
-    }
-    lastIndex = fracRegex.lastIndex;
-  }
-  if (lastIndex < processed.length) parts.push(highlight(processed.substring(lastIndex)));
-  return <span>{parts}</span>;
+          <div className="h-[1px] flex-1 bg-slate-100"></div>
+        </div>
+        <div className="text-3xl font-bold text-slate-800 leading-relaxed">
+          {renderMathContent(content)}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [activeSteps, setActiveSteps] = useState<Record<number, number>>({});
   const [visibleCanvas, setVisibleCanvas] = useState<Record<string, boolean>>({});
+  const [activeSteps, setActiveSteps] = useState<Record<number, number>>({});
   
-  if (!content) return <div className="p-20 text-center font-bold text-slate-400">講義內容載入中...</div>;
-
-  const themeColors = useMemo(() => {
-    switch (theme) {
-      case 'warm': return { primary: 'text-amber-900', bg: 'bg-orange-50', border: 'border-orange-200' };
-      case 'cold': return { primary: 'text-indigo-900', bg: 'bg-cyan-50', border: 'border-cyan-200' };
-      default: return { primary: 'text-slate-900', bg: 'bg-slate-100', border: 'border-slate-200' };
-    }
-  }, [theme]);
-
-  const fontSizeClass = 'text-3xl leading-[3.6]';
+  const structuredConcepts = useMemo(() => {
+    if (!content.concept) return [];
+    return content.concept
+      .split(/\n|(?<=。)/g)
+      .map(s => s.trim())
+      .filter(s => s.length > 2);
+  }, [content.concept]);
 
   const handleExportPDF = () => {
     const opt = {
       margin: 10,
-      filename: `講義_${content.title || '無標題'}.pdf`,
+      filename: `講義_${content.title || '數學'}.pdf`,
       image: { type: 'jpeg', quality: 1.0 },
       html2canvas: { scale: 2, useCORS: true },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -106,132 +125,130 @@ const HandoutViewer: React.FC<Props> = ({ content, params, theme }) => {
     html2pdf().set(opt).from(containerRef.current).save();
   };
 
-  const structuredConcepts = useMemo(() => {
-    const rawConcept = content.concept || "";
-    const normalized = rawConcept.replace(/\\n/g, '\n').trim();
-    const segments = normalized.split(/(?=重點[一二三四五六七八九十\d]+)/g);
-    const results: { text: string; isPoint: boolean; label?: string; id: number }[] = [];
-    segments.forEach((segment, idx) => {
-      const trimmed = segment.trim();
-      if (!trimmed) return;
-      if (trimmed.startsWith('重點')) {
-        const splitIndex = trimmed.indexOf('：') !== -1 ? trimmed.indexOf('：') : trimmed.indexOf(':');
-        if (splitIndex !== -1) {
-          const labelPart = trimmed.substring(0, splitIndex).trim();
-          const contentPart = trimmed.substring(splitIndex + 1).trim();
-          results.push({ text: contentPart, isPoint: true, label: labelPart, id: idx });
-          return;
-        }
-      }
-      results.push({ text: trimmed, isPoint: false, id: idx });
-    });
-    return results;
-  }, [content.concept]);
-
-  const examples = content.examples || [];
-  const exercises = content.exercises || [];
-
   return (
-    <div ref={containerRef} className="bg-white rounded-[2.5rem]">
-      <div className="no-print p-6 border-b flex justify-end gap-3 sticky top-0 bg-white/90 backdrop-blur z-30">
-        <button onClick={handleExportPDF} className="bg-rose-500 text-white px-6 py-2 rounded-xl font-bold shadow-md hover:bg-rose-600 transition">下載 PDF</button>
-        <button onClick={() => window.print()} className="bg-slate-800 text-white px-6 py-2 rounded-xl font-bold shadow-md">列印</button>
+    <div ref={containerRef} className="bg-white rounded-[3rem] shadow-xl overflow-hidden print:shadow-none print:rounded-none border border-slate-100">
+      <style>{`
+        .svg-container svg { width: 100%; height: 100%; display: block; }
+        .svg-container text { font-family: 'Noto Sans TC', sans-serif; font-weight: 900; }
+        @media print { .no-print { display: none !important; } }
+      `}</style>
+
+      <div className="no-print p-6 border-b flex justify-end gap-3 sticky top-0 bg-white/95 backdrop-blur z-50 shadow-sm">
+        <button onClick={handleExportPDF} className="bg-rose-500 text-white px-6 py-2 rounded-xl font-black text-sm shadow-md hover:bg-rose-600 transition-all flex items-center gap-2">
+          下載 PDF
+        </button>
+        <button onClick={() => window.print()} className="bg-slate-800 text-white px-6 py-2 rounded-xl font-black text-sm shadow-md transition-all">
+          列印
+        </button>
       </div>
 
-      <div className="p-10 md:p-16">
-        <header className="mb-20">
-          <div className="flex gap-2 mb-4">
-            <span className="bg-slate-100 text-slate-500 px-3 py-1 rounded-lg text-[12px] font-bold uppercase tracking-wider">{params.publisher}</span>
-          </div>
-          <h1 className={`text-6xl font-black ${themeColors.primary} tracking-tight`}>{renderMathContent(content.title || "數學單元講義", false)}</h1>
-        </header>
+      <div className="bg-slate-900 p-12 text-white border-b-8 border-blue-600">
+        <h1 className="text-5xl font-black mb-6 tracking-tight">
+          {renderMathContent(content.title || '教學講義', false)}
+        </h1>
+        <div className="flex gap-3">
+          <span className="bg-blue-600 px-4 py-1.5 rounded-xl font-black text-[10px] uppercase tracking-widest">
+            {params.grade}
+          </span>
+          <span className="bg-slate-700 px-4 py-1.5 rounded-xl font-black text-[10px] uppercase tracking-widest">
+            {params.difficulty} 難度
+          </span>
+        </div>
+      </div>
 
-        <section className="mb-20">
-          <h2 className="text-4xl font-black mb-12 flex items-center gap-4 text-slate-800">
-            <span className="w-2 h-10 bg-amber-500 rounded-full"></span> 核心觀念
-          </h2>
-
-          {content.visualAidSvg && (
-            <div className="visual-aid-container mb-14" dangerouslySetInnerHTML={{ __html: content.visualAidSvg }} />
-          )}
-
-          <div className={`${fontSizeClass} font-bold text-slate-700`}>
-            {structuredConcepts.length > 0 ? structuredConcepts.map((item) => (
-              <div key={item.id} className={item.isPoint ? 'premium-point-card' : 'pl-14 pr-4 border-l-4 border-slate-100 mb-8 block'}>
-                {item.isPoint && item.label && <div className="point-badge">{item.label}</div>}
-                <div className={item.isPoint ? 'mt-4 block' : ''}>{renderMathContent(item.text, true)}</div>
-              </div>
-            )) : <p>觀念整理中...</p>}
-          </div>
-        </section>
-
-        <section className="practice-section">
-          <h2 className="text-4xl font-black mb-12 flex items-center gap-4 text-blue-900">
-            <span className="w-3 h-12 bg-blue-600 rounded-full"></span> 實戰練習
+      <div className="p-10 md:p-16 space-y-24">
+        <section>
+          <h2 className="text-slate-900 font-black text-4xl mb-10 flex items-center gap-4">
+            <span className="w-2 h-10 bg-blue-600 rounded-full"></span> 核心觀念
           </h2>
           
-          <div className="space-y-32">
-            {examples.map((ex, i) => (
-              <div key={`ex-${i}`} className="example-block">
-                <div className="flex justify-between items-center mb-10">
-                  <span className="bg-blue-600 text-white px-8 py-2 rounded-xl font-black text-sm shadow-lg">例題 {i+1}</span>
-                  <button onClick={() => setVisibleCanvas(p => ({...p, [`ex-${i}`]: !p[`ex-${i}`]}))} className="no-print bg-white border border-slate-200 text-slate-500 px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all">
-                    {visibleCanvas[`ex-${i}`] ? '關閉寫字區' : '開啟寫字區'}
-                  </button>
+          <div className="space-y-4">
+            {structuredConcepts.map((item, idx) => (
+              <ConceptCard key={idx} text={item} index={idx} />
+            ))}
+          </div>
+
+          {content.visualAidSvg && (
+            <div className="mt-12">
+              {renderMathContent(content.visualAidSvg)}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-24">
+          <div className="h-[1px] bg-slate-100 w-full"></div>
+          {(content.examples || []).map((ex, i) => (
+            <div key={i} className="page-break-inside-avoid">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-4">
+                  <span className="bg-slate-900 text-white w-12 h-12 rounded-2xl flex items-center justify-center font-black text-2xl shadow-lg">
+                    {i+1}
+                  </span>
+                  <h3 className="text-xl font-black text-slate-400 uppercase tracking-widest">Example</h3>
                 </div>
-                
-                {ex.visualAidSvg && (
-                  <div className="mb-8" dangerouslySetInnerHTML={{ __html: ex.visualAidSvg }} />
-                )}
+                <button 
+                  onClick={() => setVisibleCanvas(p => ({...p, [`ex-${i}`]: !p[`ex-${i}`]}))} 
+                  className="no-print text-[10px] font-black text-slate-400 px-4 py-2 bg-white rounded-xl border border-slate-100 hover:border-blue-200 transition-all shadow-sm"
+                >
+                  {visibleCanvas[`ex-${i}`] ? '✕ 關閉寫字板' : '✏️ 開啟寫字板'}
+                </button>
+              </div>
+              
+              <div className="text-4xl font-black mb-10 text-slate-800 leading-snug tracking-tight">
+                {renderMathContent(ex.question)}
+              </div>
 
-                <div className={`${fontSizeClass} font-black text-slate-800 mb-12`}>{renderMathContent(ex.question)}</div>
-                
-                {visibleCanvas[`ex-${i}`] && (
-                  <div className="mb-12 no-print">
-                    <DrawingCanvas id={`ex-canvas-${i}`} height={500} isVisible={true} />
-                  </div>
-                )}
+              {visibleCanvas[`ex-${i}`] && (
+                <div className="mb-10 no-print">
+                  <DrawingCanvas id={`ex-${i}`} height={400} />
+                </div>
+              )}
 
-                <div className="space-y-8 mb-12">
-                  {(ex.stepByStep || []).map((s, si) => (
-                    <div key={si} className={`flex gap-6 items-start ${si < (activeSteps[i] || 0) || window.location.search.includes('print') ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden print:h-auto print:opacity-100 transition-all duration-500'}`}>
-                      <span className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center font-black shrink-0 border border-blue-100 text-xl">{si+1}</span>
-                      <div className={`${fontSizeClass} font-bold text-slate-600 flex-1 pt-1`}>{renderMathContent(s)}</div>
+              {ex.visualAidSvg && (
+                <div className="mb-10">
+                  {renderMathContent(ex.visualAidSvg)}
+                </div>
+              )}
+
+              <div className="space-y-6 bg-blue-50/20 p-8 rounded-[2.5rem] border-2 border-blue-50 shadow-inner relative">
+                {(ex.stepByStep || []).map((s, si) => (
+                  <div 
+                    key={si} 
+                    className={`flex gap-6 items-start transition-all duration-500 ${
+                      si < (activeSteps[i] || 0) || (typeof window !== 'undefined' && window.location.search.includes('print'))
+                        ? 'opacity-100' 
+                        : 'opacity-0 h-0 overflow-hidden'
+                    }`}
+                  >
+                    <span className="w-10 h-10 rounded-xl bg-white border border-blue-100 flex items-center justify-center font-black text-blue-600 shrink-0 shadow-sm text-lg">{si+1}</span>
+                    <div className="text-2xl font-bold text-slate-700 pt-1 leading-relaxed">
+                      {renderMathContent(s)}
                     </div>
-                  ))}
-                </div>
-
-                <div className="no-print mt-12 flex justify-center">
-                  {(activeSteps[i] || 0) < (ex.stepByStep || []).length ? (
-                    <button onClick={() => setActiveSteps(p => ({...p, [i]: (p[i] || 0) + 1}))} className="bg-blue-600 text-white px-14 py-5 rounded-full font-black text-2xl shadow-xl hover:scale-105 active:scale-95 transition-all">下一步 ➜</button>
+                  </div>
+                ))}
+                
+                <div className="mt-8 pt-8 border-t border-dashed border-blue-100 flex items-center gap-6">
+                  { (activeSteps[i] || 0) < (ex.stepByStep || []).length ? (
+                    <button 
+                      onClick={() => setActiveSteps(prev => ({...prev, [i]: (prev[i] || 0) + 1}))}
+                      className="no-print bg-blue-600 hover:bg-blue-700 text-white px-10 py-4 rounded-2xl font-black text-xl shadow-lg transition-all"
+                    >
+                      下一步 ➜
+                    </button>
                   ) : (
-                    <div className="bg-emerald-50 text-emerald-700 p-10 rounded-3xl border-2 border-emerald-100 text-center w-full shadow-inner animate-in zoom-in-95">
-                      <div className="text-sm font-black uppercase tracking-widest mb-4 opacity-40">正確解答</div>
-                      <div className="text-5xl font-black tracking-tight">{renderMathContent(ex.answer, false)}</div>
+                    <div className="flex items-center gap-6 animate-in zoom-in-95">
+                      <div className="bg-emerald-500 text-white px-4 py-1 rounded-lg font-black text-[10px] shadow-md">
+                        答案
+                      </div>
+                      <div className="text-5xl font-black text-emerald-600 tracking-tighter">
+                        {renderMathContent(ex.answer, false)}
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
-            ))}
-
-            {exercises.map((exe, i) => (
-              <div key={`exe-${i}`} className="example-block border-indigo-100">
-                <div className="flex justify-between items-center mb-10">
-                  <span className="bg-indigo-600 text-white px-8 py-2 rounded-xl font-black text-sm shadow-lg">自主練習 {i+1}</span>
-                  <button onClick={() => setVisibleCanvas(p => ({...p, [`exe-${i}`]: !p[`exe-${i}`]}))} className="no-print bg-white border border-slate-200 text-slate-500 px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all">
-                    {visibleCanvas[`exe-${i}`] ? '關閉寫字區' : '開啟寫字區'}
-                  </button>
-                </div>
-                <div className={`${fontSizeClass} font-black text-slate-800 mb-12`}>{renderMathContent(exe.question)}</div>
-                {visibleCanvas[`exe-${i}`] && (
-                  <div className="mb-8 no-print">
-                    <DrawingCanvas id={`exe-canvas-${i}`} height={500} isVisible={true} />
-                  </div>
-                )}
-                <div className="hidden print:block w-full h-[20rem] border-2 border-dashed border-slate-200 rounded-3xl mt-10 opacity-30"></div>
-              </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </section>
       </div>
     </div>

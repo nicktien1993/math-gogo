@@ -28,11 +28,16 @@ const robustExtractJSON = (text: string) => {
 const SYSTEM_PROMPT = `你是一位專業的台灣國小資源班特教老師。
 請為學生生成「微步化（小步子）」教材。
 
-嚴格規則：
-1. 嚴禁使用 $ 符號，請使用繁體中文。
-2. 每個例題必須提供視覺圖解 visualAidSvg (SVG 格式)。
-3. SVG 規則：黑色線條 (stroke="#000000")，粗細 3px，viewBox="0 0 400 400"。
-4. 如果是時鐘題目，必須畫出圓、12個數字、長短針。`;
+【零容忍規則：嚴禁 $ 符號】
+- 絕對禁止使用 $ 符號來包裹數學公式。
+- 錯誤範例：$1+1=2$ (禁止)
+- 正確範例：1+1=2 (必須這樣寫)
+- 如果你在輸出中包含任何 $ 符號，該教材將無法閱讀，請務必遵守。
+
+【SVG 繪圖規範：透明填充】
+1. 繪製矩形 <rect> 或圓形 <circle> 時，必須設定 fill="none"，以免遮擋下方的文字或數字。
+2. viewBox="0 0 400 400"，stroke="#000000"，stroke-width="3"。
+3. 繪製順序：背景圖形先畫，文字與數字後畫，確保數字在最上層。`;
 
 const HANDOUT_SCHEMA = {
   type: Type.OBJECT,
@@ -67,7 +72,7 @@ export const generateHandout = async (params: SelectionParams): Promise<HandoutC
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
-      contents: `為國小「${params.grade}」資源班學生製作數學講義。單元名稱：${params.unitTitle}。難度：${params.difficulty}。請用微步化拆解步驟並提供大量 SVG 圖解。`,
+      contents: `為國小「${params.grade}」資源班學生製作數學講義。單元：${params.unitTitle}。難度：${params.difficulty}。再次強調：禁止使用 $ 符號，圖形必須透明。`,
       config: { 
         systemInstruction: SYSTEM_PROMPT,
         responseMimeType: "application/json",
@@ -75,7 +80,7 @@ export const generateHandout = async (params: SelectionParams): Promise<HandoutC
       }
     });
     const data = robustExtractJSON(response.text);
-    if (!data) throw new Error("AI 回傳失敗");
+    if (!data) throw new Error("AI 回傳格式錯誤");
     return data;
   } catch (e: any) {
     throw new Error(e.message || "生成失敗");
@@ -88,7 +93,7 @@ export const generateHomework = async (params: SelectionParams, config: Homework
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
-      contents: `針對單元「${params.unitTitle}」製作練習卷。年級：${params.grade}。計算題 ${config.calculationCount} 題，應用題 ${config.wordProblemCount} 題。`,
+      contents: `針對單元「${params.unitTitle}」製作隨堂練習卷。計算題 ${config.calculationCount} 題，應用題 ${config.wordProblemCount} 題。禁止使用 $ 符號。`,
       config: { 
         systemInstruction: SYSTEM_PROMPT, 
         responseMimeType: "application/json" 
